@@ -3,14 +3,16 @@
 // gen_call — the chain's default rollup RPC does not). Writes go through the
 // user's injected wallet (MetaMask / Rabby) after switching it to Bradbury.
 //
-// FEES — the part that makes payouts land (Twin14, proven live 2026-11-09):
-// every _pay-emitting submission (release_tranche, cancel_grant refund, and
-// fund_grant which can refund) MUST carry the corrected external allocation:
-// recipient = the payee, callKey = CALL_KEY_UNNAMED (32 zero bytes),
-// budget = 0.0012 GEN = exactly 20x (gasLimit 200000 x maxGasPrice 300000000),
-// feeValue = roundFees + 0.0012 GEN. Without the allocation the payout
-// message is emitted but never executes — and FINISHED_WITH_RETURN does NOT
-// prove a payout, only the recipient balance delta does (see balanceDelta).
+// PAYOUT FEES — the part that makes payouts land: only withdraw_claim and
+// sweep_excess emit _pay, so only they carry the corrected external
+// allocation: recipient = the payee, callKey = CALL_KEY_UNNAMED (32 zero
+// bytes), budget = 0.0012 GEN = exactly 20x (gasLimit 200000 x maxGasPrice
+// 300000000), feeValue = roundFees + 0.0012 GEN. Without the allocation the
+// payout message is emitted but never executes — and FINISHED_WITH_RETURN does
+// NOT prove a payout, only the recipient balance delta does (see
+// balanceDelta). release_tranche, expire_milestone, cancel_grant and
+// fund_grant only CREDIT claims (no _pay) — they use baseFees(), and the
+// credit is verified by reading get_claimable afterwards.
 
 import { createClient, encodeExternalMessageFeeParams, MessageType, CALL_KEY_UNNAMED } from "genlayer-js";
 import { testnetBradbury } from "genlayer-js/chains";
@@ -41,7 +43,7 @@ const FEE_DISTRIBUTION = {
 };
 const BASE_FEE_VALUE = 100000000000010352n; // roundFees with zero message budget
 
-// Twin14-proven payout allocation constants.
+// Payout allocation constants (see the payout-fees note above).
 const PAYOUT_GAS_LIMIT = 200000n;
 const PAYOUT_MAX_GAS_PRICE = 300000000n;
 export const PAYOUT_BUDGET = 1200000000000000n; // 0.0012 GEN = exactly 20x gasLimit*maxGasPrice
@@ -81,8 +83,9 @@ async function liveRoundFees(totalMessageFees) {
 }
 
 /**
- * Fees for _pay-emitting calls. `payee` is the address the contract may pay
- * (release -> builder, cancel -> grantor, fund -> the sender, for refunds).
+ * Fees for _pay-emitting calls (withdraw_claim -> the claimant,
+ * sweep_excess -> the owner). Every other write credits claims instead of
+ * paying inline, so it uses baseFees().
  */
 export async function payoutFees(payee) {
   const roundFees = await liveRoundFees(PAYOUT_BUDGET);
@@ -200,6 +203,31 @@ export async function ethBalance(address) {
   return BigInt(j.result);
 }
 
+/** GEN the contract owes this address (release / expiry / cancel credits). "0" when none. */
+export async function getClaimable(address) {
+  const v = await readJsonView("get_claimable", [address]);
+  try {
+    return BigInt(v ?? "0");
+  } catch {
+    return 0n;
+  }
+}
+
+/**
+ * An in-flight withdrawal for this address, or null. The contract returns
+ * "NONE" when there is none, else { amount_wei, initiated_at }.
+ */
+export async function getPending(address) {
+  const v = await readJsonView("get_pending", [address]);
+  if (!v || typeof v !== "object") return null;
+  try {
+    if (BigInt(v.amount_wei || "0") <= 0n) return null;
+  } catch {
+    return null;
+  }
+  return v;
+}
+
 // --- writes ---------------------------------------------------------------
 /**
  * Send a write and wait for FINALIZED consensus.
@@ -238,7 +266,7 @@ export async function sendWrite(account, functionName, args = [], value = 0n, fe
 }
 
 /**
- * Twin14 lesson: a FINISHED_WITH_RETURN receipt does NOT prove a payout.
+ * A FINISHED_WITH_RETURN receipt does NOT prove a payout.
  * Only the recipient's balance delta does. Call with balances read before
  * and after the tx to get { before, after, deltaWei, landed }.
  */

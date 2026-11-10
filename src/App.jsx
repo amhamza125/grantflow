@@ -1,3 +1,13 @@
+// GrantFlow dApp — grant files + public ledger, read live from the
+// GrantFlow v3.3 contract on Bradbury (chain 4221). No wallet is needed to
+// read: every number and verdict comes from get_protocol_overview /
+// get_grant / get_activity_history. Writes (fund, submit, assess, release,
+// appeal, expire, cancel, withdraw) are signed by the connected wallet.
+//
+// The claim flow: a release, expiry or cancel only credits a claim — the
+// GEN moves when the recipient withdraws it, and only a balance delta
+// proves the transfer landed. withdraw_claim is the only method that pays
+// inline.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CONTRACT_ADDRESS,
@@ -12,7 +22,8 @@ import {
   payoutFees,
   baseFees,
   ethBalance,
-  balanceDelta,
+  getClaimable,
+  getPending,
   shortAddress,
   genToWei,
   weiToGen,
@@ -21,6 +32,10 @@ import {
 import GrantFile from "./components/GrantFile.jsx";
 import CreateGrant from "./components/CreateGrant.jsx";
 import Ledger from "./components/Ledger.jsx";
+import RiskHeatmap from "./components/RiskHeatmap.jsx";
+import { buildReputation } from "./lib/reputation.js";
+import { LoadingView } from "./components/Skeletons.jsx";
+import { initialTheme, applyTheme, toggleTheme } from "./lib/theme.js";
 
 const GEN = 10n ** 18n;
 
@@ -30,6 +45,8 @@ export default function App() {
   const [overview, setOverview] = useState(null);
   const [grants, setGrants] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [claimable, setClaimable] = useState(0n); // GEN the contract owes the connected account
+  const [pending, setPending] = useState(null); // in-flight withdrawal, or null
   const [selectedId, setSelectedId] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -37,6 +54,32 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [theme, setTheme] = useState(initialTheme);
+
+  // Reputation ribbons, computed only from the grants loaded from the
+  // contract — the full on-chain history, not a sample.
+  const reputation = useMemo(() => buildReputation(grants), [grants]);
+
+  // Theme: the manual toggle wins and is persisted; first load respects
+  // the system preference.
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+  const onToggleTheme = () => setTheme((t) => toggleTheme(t));
+
+  // Deep link: #grant-<id> opens that grant file on load.
+  useEffect(() => {
+    const m = window.location.hash.match(/^#grant-(\d+)$/);
+    if (m) setSelectedId(Number(m[1]));
+  }, []);
+
+  // Keep the address bar in step with the open grant file.
+  useEffect(() => {
+    if (grants.length === 0) return;
+    if (grants.some((g) => Number(g.id) === Number(selectedId))) {
+      window.history.replaceState(null, "", `#grant-${selectedId}`);
+    }
+  }, [grants, selectedId]);
 
   const pushToast = useCallback((kind, title, body, txHash) => {
     const id = Date.now() + Math.random();
@@ -58,12 +101,19 @@ export default function App() {
       setGrants(list);
       const hist = await readJsonView("get_activity_history", [50]);
       setActivity(Array.isArray(hist) ? hist : []);
+      if (account) {
+        setClaimable(await getClaimable(account));
+        setPending(await getPending(account));
+      } else {
+        setClaimable(0n);
+        setPending(null);
+      }
     } catch (e) {
       setLoadError(friendlyError(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [account]);
 
   useEffect(() => {
     refresh();
@@ -132,7 +182,11 @@ export default function App() {
   const onCreate = async ({ builder, title, milestones }) => {
     if (!needWallet()) return;
     const milestonesJson = JSON.stringify(
-      milestones.map((m) => ({ spec: m.spec, amount_wei: genToWei(m.amountGen).toString() }))
+      milestones.map((m) => ({
+        spec: m.spec,
+        amount_wei: genToWei(m.amountGen).toString(),
+        deadline: String(m.deadline),
+      }))
     );
     await runWrite("create", "Create grant", async () => {
       const { hash, receipt } = await sendWrite(
@@ -156,22 +210,26 @@ export default function App() {
     if (!needWallet()) return;
     const totalWei = BigInt(grant.total_escrow_wei);
     await runWrite(`fund-${grant.id}`, "Fund grant", async () => {
-      const before = await ethBalance(account);
-      const { hash, receipt } = await sendWrite(
+      // fund_grant only credits refunds (wrong amount / wrong sender) — it
+      // never pays inline, so it needs no payout allocation. A rejected
+      // funding returns FINISHED_WITH_RETURN, so the receipt cannot tell a
+      // rejection from a funding: read the grant status and the claim after.
+      const { hash } = await sendWrite(
         account,
         "fund_grant",
         [Number(grant.id)],
         totalWei,
-        await payoutFees(account) // fund can refund (wrong amount / wrong sender), so it carries the payout allocation
+        baseFees()
       );
-      const d = await balanceDelta(account, before);
-      const refunded = receipt && receipt.execName === "FINISHED_WITH_ERROR";
+      const fresh = await readJsonView("get_grant", [Number(grant.id)]);
+      const credited = await getClaimable(account);
+      const funded = fresh && fresh.status === "FUNDED";
       pushToast(
-        refunded ? "warn" : "ok",
-        refunded ? "Funding rejected — refunded in full" : "Grant funded",
-        refunded
-          ? `The contract refused the funding and sent the GEN back. Your balance change is ${weiToGen(d.deltaWei)} GEN (transaction fees only).`
-          : `${weiToGen(totalWei)} GEN escrow locked. Your balance change: ${weiToGen(d.deltaWei)} GEN.`,
+        funded ? "ok" : "warn",
+        funded ? "Grant funded" : "Funding rejected — GEN credited back",
+        funded
+          ? `${weiToGen(totalWei)} GEN escrow locked.`
+          : `The contract refused the funding (wrong amount or wrong funder) and recorded ${weiToGen(credited)} GEN as claimable for you — use Withdraw below to receive it.`,
         hash
       );
     });
@@ -228,24 +286,80 @@ export default function App() {
     if (!needWallet()) return;
     const milestone = grant.milestones[Number(grant.current_milestone)];
     const amountWei = BigInt(milestone.amount_wei);
+    const pct = milestone.verdict && milestone.verdict.payout_pct !== undefined
+      ? Number(milestone.verdict.payout_pct)
+      : 100;
+    const expected = pct >= 100 ? amountWei : (amountWei * BigInt(pct)) / 100n;
     await runWrite(`release-${grant.id}`, "Release tranche", async () => {
-      const before = await ethBalance(grant.builder);
-      const { hash, receipt } = await sendWrite(
+      // release_tranche credits both shares (builder's paid share + the
+      // grantor's remainder on a PARTIAL) — it never pays inline, so it needs
+      // no payout allocation. Verify the builder's credit, not a balance
+      // delta: nothing moves on chain until the builder withdraws.
+      const before = await getClaimable(grant.builder);
+      const { hash } = await sendWrite(
         account,
         "release_tranche",
         [Number(grant.id)],
         0n,
-        await payoutFees(grant.builder) // Twin14 allocation to the builder
+        baseFees()
       );
-      const d = await balanceDelta(grant.builder, before);
-      const expected = amountWei;
-      const landed = d.deltaWei === expected;
+      const after = await getClaimable(grant.builder);
+      const credited = after - before;
+      const landed = credited === expected;
       pushToast(
         landed ? "ok" : "warn",
-        landed ? "Tranche released — payout verified" : "Release submitted — payout NOT verified",
+        landed ? "Tranche released — credit verified" : "Release submitted — credit NOT verified",
         landed
-          ? `Builder balance rose by exactly ${weiToGen(d.deltaWei)} GEN. Receipt alone proves nothing; the balance delta does.`
-          : `The receipt execution is ${receipt ? receipt.execName || "unknown" : "unknown"}, but the builder balance moved by ${weiToGen(d.deltaWei)} GEN instead of the expected ${weiToGen(expected)} GEN. Check the transaction in the explorer.`,
+          ? `The contract credited ${weiToGen(credited)} GEN to the builder${pct < 100 ? ` (${pct}% of the tranche; the remaining ${weiToGen(amountWei - expected)} GEN is credited to the grantor at the same time)` : ""}. The builder withdraws it to receive it on chain.`
+          : `The builder's claimable credit moved by ${weiToGen(credited)} GEN instead of the expected ${weiToGen(expected)} GEN. Check the transaction in the explorer.`,
+        hash
+      );
+    });
+  };
+
+  const onAppeal = async (grant) => {
+    if (!needWallet()) return;
+    await runWrite(`appeal-${grant.id}`, "Request appeal", async () => {
+      const { hash, receipt } = await sendWrite(
+        account,
+        "request_appeal",
+        [Number(grant.id)],
+        0n,
+        baseFees()
+      );
+      pushToast(
+        "ok",
+        "Appeal requested",
+        "The builder may now submit fresh evidence for one re-assessment. The second verdict is final.",
+        hash
+      );
+    });
+  };
+
+  const onExpire = async (grant) => {
+    if (!needWallet()) return;
+    const milestone = grant.milestones[Number(grant.current_milestone)];
+    const refundWei = BigInt(milestone.amount_wei) - BigInt(milestone.paid_wei || "0");
+    await runWrite(`expire-${grant.id}`, "Expire milestone", async () => {
+      // expire_milestone credits the unclaimed escrow to the grantor — it
+      // never pays inline. Verify the grantor's claim, not a balance delta.
+      const before = await getClaimable(grant.grantor);
+      const { hash } = await sendWrite(
+        account,
+        "expire_milestone",
+        [Number(grant.id)],
+        0n,
+        baseFees()
+      );
+      const after = await getClaimable(grant.grantor);
+      const credited = after - before;
+      const landed = credited === refundWei;
+      pushToast(
+        landed ? "ok" : "warn",
+        landed ? "Milestone expired — refund credited" : "Expiry submitted — refund NOT verified",
+        landed
+          ? `The contract credited ${weiToGen(credited)} GEN to the grantor. The grantor withdraws it to receive it on chain.`
+          : `The grantor's claimable credit moved by ${weiToGen(credited)} GEN instead of the expected ${weiToGen(refundWei)} GEN. Check the transaction in the explorer.`,
         hash
       );
     });
@@ -253,23 +367,106 @@ export default function App() {
 
   const onCancel = async (grant) => {
     if (!needWallet()) return;
-    const unclaimed = BigInt(grant.total_escrow_wei) - BigInt(grant.released_wei);
+    const unclaimed = BigInt(grant.total_escrow_wei) - BigInt(grant.released_wei) - BigInt(grant.refunded_wei || "0");
     await runWrite(`cancel-${grant.id}`, "Cancel grant", async () => {
-      const before = await ethBalance(grant.grantor);
+      // cancel_grant credits the unclaimed escrow to the grantor — it never
+      // pays inline. Verify the grantor's claim, not a balance delta.
+      const before = await getClaimable(grant.grantor);
       const { hash } = await sendWrite(
         account,
         "cancel_grant",
         [Number(grant.id)],
         0n,
-        await payoutFees(grant.grantor) // cancel refunds unclaimed escrow to the grantor
+        baseFees()
       );
-      const d = await balanceDelta(grant.grantor, before);
+      const after = await getClaimable(grant.grantor);
+      const credited = after - before;
       pushToast(
         "ok",
         "Grant cancelled",
         unclaimed > 0n
-          ? `Unclaimed escrow returns to the grantor. Grantor balance change: ${weiToGen(d.deltaWei)} GEN (expected about +${weiToGen(unclaimed)} GEN minus transaction fees).`
+          ? `Unclaimed escrow returns to the grantor. The contract credited ${weiToGen(credited)} GEN to the grantor — the grantor withdraws it to receive it on chain.`
           : "Grant cancelled. There was no unclaimed escrow to refund.",
+        hash
+      );
+    });
+  };
+
+  // --- Withdrawals (the pull pattern) ------------------------------------
+  // A release / expiry / cancel only credits a claim. The money moves when
+  // the recipient withdraws it — and only a balance delta proves it landed.
+  const onWithdraw = async () => {
+    if (!needWallet()) return;
+    await runWrite("withdraw", "Withdraw claim", async () => {
+      // withdraw_claim pays inline, so it carries the payout allocation to
+      // the claimant. The claim moves to a pending record first; only the
+      // balance delta proves the transfer landed.
+      const claim = await getClaimable(account);
+      const balBefore = await ethBalance(account);
+      const { hash, receipt } = await sendWrite(
+        account,
+        "withdraw_claim",
+        [],
+        0n,
+        await payoutFees(account)
+      );
+      const exec = receipt ? receipt.execName || "" : "";
+      if (exec === "FINISHED_WITH_ERROR") {
+        pushToast(
+          "warn",
+          "Withdrawal could not run",
+          "The contract refused the withdrawal (nothing claimable, or another withdrawal is still pending). No funds moved.",
+          hash
+        );
+        return;
+      }
+      const balAfter = await ethBalance(account);
+      const delta = balAfter - balBefore;
+      if (delta > 0n) {
+        pushToast(
+          "ok",
+          "Withdrawal landed — payout verified",
+          `Your balance rose by ${weiToGen(delta)} GEN (claim was ${weiToGen(claim)} GEN; the difference is the transaction fee). Confirm receipt below to clear the pending record.`,
+          hash
+        );
+      } else {
+        pushToast(
+          "warn",
+          "Withdrawal submitted — balance did not rise",
+          `Your balance did not move, so the transfer may have failed. Do NOT confirm receipt — ask the contract owner to restore the pending withdrawal, then withdraw again. Your claim is not lost.`,
+          hash
+        );
+      }
+    });
+  };
+
+  const onConfirmWithdrawal = async () => {
+    if (!needWallet()) return;
+    await runWrite("confirm", "Confirm receipt", async () => {
+      const { hash } = await sendWrite(account, "confirm_withdrawal", [], 0n, baseFees());
+      pushToast(
+        "ok",
+        "Receipt confirmed",
+        "The pending withdrawal is cleared. If the transfer never arrived, ask the owner to restore it instead — do not confirm a payment you did not receive.",
+        hash
+      );
+    });
+  };
+
+  const onRestorePending = async (recipient) => {
+    if (!needWallet()) return;
+    await runWrite("restore", "Restore pending withdrawal", async () => {
+      const { hash } = await sendWrite(
+        account,
+        "restore_pending",
+        [recipient.trim().toLowerCase()],
+        0n,
+        baseFees()
+      );
+      pushToast(
+        "ok",
+        "Pending withdrawal restored",
+        `The pending amount for ${shortAddress(recipient)} is claimable again — the recipient can withdraw it.`,
         hash
       );
     });
@@ -294,117 +491,124 @@ export default function App() {
   const isOwner = account && overview && account.toLowerCase() === String(overview.owner || "").toLowerCase();
 
   return (
-    <div className="min-h-screen bg-paper font-body text-ink">
+    <div className="min-h-screen bg-night font-body text-mist">
+      <div className="aurora" aria-hidden="true">
+        <div className="aurora-blob aurora-blob-a" />
+        <div className="aurora-blob aurora-blob-b" />
+        <div className="aurora-blob aurora-blob-c" />
+      </div>
+
       {/* Header */}
-      <header className="border-b-2 border-ink bg-paper2">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-4">
+      <header className="glass-strong sticky top-0 z-20">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:py-4">
           <div className="mr-2">
-            <h1 className="font-display text-3xl font-bold leading-none">GrantFlow</h1>
-            <p className="mt-1 text-xs tracking-wide text-inksoft">
-              AI-jury grant payouts · GenLayer Bradbury · GMV v2.2
+            <h1 className="font-display text-2xl font-extrabold leading-none tracking-tight sm:text-3xl">
+              <span className="text-gradient">GrantFlow</span>
+            </h1>
+            <p className="mt-1 text-xs tracking-wide text-steel">
+              AI-jury grant payouts · GenLayer Bradbury · GrantFlow v3.3
             </p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-rule bg-paper px-3 py-1 text-xs font-semibold">
+            <button
+              onClick={onToggleTheme}
+              aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              className="rounded-full border border-line bg-panel px-3 py-1.5 text-xs font-semibold transition hover:border-acid/60"
+            >
+              {theme === "light" ? "☾ Dark" : "☀ Light"}
+            </button>
+            <span className="hidden rounded-full border border-line bg-panel px-3 py-1.5 text-xs font-semibold sm:inline-block">
               Bradbury · chain 4221 · GEN
             </span>
             <a
               href={explorerAddressUrl(CONTRACT_ADDRESS)}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full border border-rule bg-paper px-3 py-1 font-mono text-xs hover:underline"
+              className="rounded-full border border-line bg-panel px-3 py-1.5 font-mono text-xs transition hover:border-acid/60 hover:text-acid"
               title={CONTRACT_ADDRESS}
             >
               {shortAddress(CONTRACT_ADDRESS)} ↗
             </a>
             {account ? (
-              <span className="rounded-full bg-pine px-3 py-1 text-xs font-semibold text-white" title={account}>
+              <span className="rounded-full bg-acid px-3 py-1.5 text-xs font-bold text-acidInk" title={account}>
                 {shortAddress(account)}
               </span>
             ) : (
-              <button
-                onClick={onConnect}
-                className="rounded-full bg-pine px-4 py-1.5 text-xs font-semibold text-white hover:bg-pinebright"
-              >
+              <button onClick={onConnect} className="btn-primary px-4 py-1.5 text-xs">
                 Connect wallet
               </button>
             )}
           </div>
         </div>
-        {/* Protocol strip — every number from chain */}
-        <div className="border-t border-rule">
-          <div className="mx-auto flex max-w-6xl flex-wrap gap-x-8 gap-y-1 px-4 py-2 text-sm">
-            <span>
-              Grants: <strong>{overview ? overview.grant_count : "…"}</strong>
-            </span>
-            <span>
-              Assessed: <strong>{overview ? overview.total_assessed : "…"}</strong>
-            </span>
-            <span>
-              Escrow held:{" "}
-              <strong>{overview ? `${weiToGen(overview.contract_balance_wei)} GEN` : "…"}</strong>
-            </span>
-            <span>
-              Owner:{" "}
-              <strong>{overview ? shortAddress(overview.owner) : "…"}</strong>
-            </span>
-            <span>
-              Status:{" "}
-              <strong>{overview ? (overview.paused ? "Paused" : "Live") : "…"}</strong>
-            </span>
-            <button onClick={() => setRefreshTick((t) => t + 1)} className="ml-auto text-xs font-semibold text-pine underline">
-              Refresh from chain
-            </button>
-          </div>
-        </div>
       </header>
 
+      {/* Protocol stats — bento grid: 2 columns on phone, 3 on tablet, 5 on desktop */}
+      <div className="relative z-10 mx-auto max-w-6xl px-4 pt-4 sm:pt-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Stat label="Grants" value={overview ? overview.grant_count : "…"} />
+          <Stat label="Assessed" value={overview ? overview.total_assessed : "…"} />
+          <Stat label="Escrow held" value={overview ? `${weiToGen(overview.contract_balance_wei)} GEN` : "…"} accent />
+          <Stat label="Owner" value={overview ? shortAddress(overview.owner) : "…"} mono />
+          <Stat label="Status" value={overview ? (overview.paused ? "Paused" : "Live") : "…"} />
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => setRefreshTick((t) => t + 1)}
+            className="text-xs font-semibold text-acid hover:underline"
+          >
+            Refresh from chain
+          </button>
+        </div>
+      </div>
+
       {/* View tabs */}
-      <nav className="mx-auto flex max-w-6xl gap-2 px-4 pt-4">
-        <button
-          onClick={() => setView("flow")}
-          className={`rounded-t-lg border border-b-0 px-5 py-2 text-sm font-semibold ${
-            view === "flow" ? "border-ink bg-paper2" : "border-rule bg-paper text-inksoft"
-          }`}
-        >
-          GrantFlow — work the grants
-        </button>
-        <button
-          onClick={() => setView("ledger")}
-          className={`rounded-t-lg border border-b-0 px-5 py-2 text-sm font-semibold ${
-            view === "ledger" ? "border-ink bg-paper2" : "border-rule bg-paper text-inksoft"
-          }`}
-        >
-          Public Ledger — every verdict
-        </button>
+      <nav className="relative z-10 mx-auto flex max-w-6xl px-4 pt-4" role="tablist" aria-label="Main views">
+        <div className="glass flex rounded-full p-1">
+          <button
+            role="tab"
+            aria-selected={view === "flow"}
+            onClick={() => setView("flow")}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition sm:px-5 ${
+              view === "flow" ? "bg-acid text-acidInk shadow-glow" : "text-steel hover:text-mist"
+            }`}
+          >
+            GrantFlow
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === "ledger"}
+            onClick={() => setView("ledger")}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition sm:px-5 ${
+              view === "ledger" ? "bg-acid text-acidInk shadow-glow" : "text-steel hover:text-mist"
+            }`}
+          >
+            Public Ledger
+          </button>
+        </div>
       </nav>
 
-      <main className="mx-auto max-w-6xl px-4 pb-16">
+      <main className="relative z-10 mx-auto max-w-6xl px-4 pb-16">
         {loading ? (
-          <div className="rounded-lg border border-rule bg-paper2 p-8 text-center shadow-file">
-            <p className="font-display text-xl">Reading the chain…</p>
-            <p className="mt-2 text-sm text-inksoft">
-              Fetching the protocol overview and every grant from GMV v2.2 on Bradbury.
-            </p>
-          </div>
+          <LoadingView />
         ) : loadError && grants.length === 0 ? (
-          <div className="rounded-lg border border-red-300 bg-red-50 p-8 shadow-file">
-            <p className="font-display text-xl">Could not read the contract</p>
+          <div role="alert" className="mt-4 rounded-3xl border border-rose/40 bg-rose/10 p-8 shadow-card">
+            <p className="font-display text-xl font-bold">Could not read the contract</p>
             <p className="mt-2 text-sm">{loadError}</p>
             <button
               onClick={() => setRefreshTick((t) => t + 1)}
-              className="mt-4 rounded bg-pine px-4 py-2 text-sm font-semibold text-white"
+              className="btn-primary mt-4 px-4 py-2.5 text-sm"
             >
               Try again
             </button>
           </div>
         ) : view === "flow" ? (
-          <div className="rounded-b-lg rounded-tr-lg border border-ink bg-paper2 p-4 shadow-file sm:p-6">
+          <div className="glass fade-up mt-4 rounded-3xl p-4 shadow-card sm:p-6">
             <div className="flex flex-wrap items-center gap-3">
-              <h2 className="font-display text-2xl font-bold">Grant files</h2>
+              <h2 className="font-display text-2xl font-bold sm:text-3xl">Grant files</h2>
               <button
                 onClick={() => setShowCreate((s) => !s)}
-                className="ml-auto rounded bg-pine px-4 py-2 text-sm font-semibold text-white hover:bg-pinebright"
+                className="btn-primary ml-auto px-4 py-2.5 text-sm"
               >
                 {showCreate ? "Close form" : "+ New grant"}
               </button>
@@ -413,26 +617,29 @@ export default function App() {
               <CreateGrant onCreate={onCreate} busy={!!busy.create} account={account} onConnect={onConnect} />
             )}
 
+            <RiskHeatmap grants={grants} selectedId={selected ? selected.id : null} onSelect={(id) => setSelectedId(id)} />
+
             {/* Grant selector — the file tabs */}
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Select a grant file">
               {grants.map((g) => (
                 <button
                   key={g.id}
                   onClick={() => setSelectedId(Number(g.id))}
-                  className={`rounded-lg border px-3 py-2 text-left text-sm ${
+                  aria-pressed={selected && Number(selected.id) === Number(g.id)}
+                  className={`min-h-11 rounded-2xl border px-3 py-2 text-left text-sm transition ${
                     selected && Number(selected.id) === Number(g.id)
-                      ? "border-pine bg-green-50 font-semibold"
-                      : "border-rule bg-paper hover:border-pine"
+                      ? "border-acid/60 bg-mint/10 font-semibold shadow-glow"
+                      : "border-line bg-panel hover:border-acid/50"
                   }`}
                 >
-                  <span className="block font-mono text-xs text-inksoft">#{g.id} · {g.status}</span>
+                  <span className="block font-mono text-xs text-steel">#{g.id} · {g.status}</span>
                   <span className="block max-w-56 truncate">{g.title}</span>
                 </button>
               ))}
               {grants.length === 0 && (
-                <p className="text-sm text-inksoft">
+                <div className="w-full rounded-2xl border border-dashed border-line p-4 text-center text-sm text-steel">
                   No grants yet on this contract. Create the first one — you are the grantor, and you fund it.
-                </p>
+                </div>
               )}
             </div>
 
@@ -442,31 +649,92 @@ export default function App() {
                 account={account}
                 isOwner={!!isOwner}
                 busy={busy}
+                reputation={reputation}
                 onFund={onFund}
                 onSubmitEvidence={onSubmitEvidence}
                 onAssess={onAssess}
                 onRelease={onRelease}
+                onAppeal={onAppeal}
+                onExpire={onExpire}
                 onCancel={onCancel}
                 onConnect={onConnect}
               />
             )}
 
+            {/* Claims — what the contract owes the connected account */}
+            {account && (
+              <section className="mt-6 rounded-2xl border border-line bg-panel p-4">
+                <h3 className="font-display text-lg font-bold">Your claims</h3>
+                <p className="text-sm text-steel">
+                  A release, expiry or cancel only credits a claim — the GEN moves when you withdraw it.
+                </p>
+                <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <dt className="text-xs text-steel">Claimable</dt>
+                    <dd className="font-semibold">{weiToGen(claimable)} GEN</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-steel">Withdrawal in flight</dt>
+                    <dd className="font-semibold">
+                      {pending ? `${weiToGen(pending.amount_wei)} GEN` : "None"}
+                    </dd>
+                  </div>
+                  {pending && (
+                    <div>
+                      <dt className="text-xs text-steel">Restorable by the owner after</dt>
+                      <dd className="font-semibold">
+                        {new Date((Number(pending.initiated_at) + 600) * 1000).toLocaleTimeString(undefined, { timeStyle: "short" })}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={onWithdraw}
+                    disabled={!!busy.withdraw || claimable <= 0n}
+                    className="btn-primary px-4 py-2.5 text-sm"
+                  >
+                    {busy.withdraw ? "Withdrawing…" : `Withdraw ${weiToGen(claimable)} GEN`}
+                  </button>
+                  {pending && (
+                    <button
+                      onClick={onConfirmWithdrawal}
+                      disabled={!!busy.confirm}
+                      className="btn-ghost px-4 py-2.5 text-sm"
+                    >
+                      {busy.confirm ? "Confirming…" : "Confirm receipt — I received the transfer"}
+                    </button>
+                  )}
+                  {claimable <= 0n && !pending && (
+                    <span className="self-center text-xs text-steel">
+                      Nothing claimable right now — a release, expiry or cancel credits a claim here first.
+                    </span>
+                  )}
+                </div>
+              </section>
+            )}
+
             {/* Owner panel — only the contract owner sees it */}
             {isOwner && (
-              <section className="mt-6 rounded-lg border border-rule bg-paper p-4">
+              <section className="mt-6 rounded-2xl border border-line bg-panel p-4">
                 <h3 className="font-display text-lg font-bold">Owner panel</h3>
-                <p className="text-sm text-inksoft">
+                <p className="text-sm text-steel">
                   You are the contract owner. These call set_paused and transfer_ownership on the contract.
+                  Restoring a pending withdrawal makes it claimable again — only use it when the recipient
+                  did not receive the transfer (at least 10 minutes after it started).
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     onClick={() => onPause(!overview.paused)}
                     disabled={!!busy.pause}
-                    className="rounded bg-amber-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    className="rounded-full bg-gold px-4 py-2.5 text-sm font-bold text-night transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
                   >
                     {busy.pause ? "Working…" : overview.paused ? "Resume protocol" : "Pause protocol"}
                   </button>
                   <OwnerTransfer onTransfer={onTransferOwnership} busy={!!busy.transfer} />
+                </div>
+                <div className="mt-3">
+                  <RestorePending onRestore={onRestorePending} busy={!!busy.restore} />
                 </div>
               </section>
             )}
@@ -475,12 +743,14 @@ export default function App() {
             <section className="mt-6">
               <h3 className="font-display text-lg font-bold">Activity — what the contract recorded</h3>
               {activity.length === 0 ? (
-                <p className="mt-1 text-sm text-inksoft">No activity recorded yet.</p>
+                <div className="mt-2 rounded-2xl border border-dashed border-line p-4 text-center text-sm text-steel">
+                  No activity recorded yet.
+                </div>
               ) : (
                 <ol className="mt-2 space-y-2">
                   {[...activity].reverse().map((a, i) => (
-                    <li key={i} className="rounded-lg border border-rule bg-paper px-3 py-2 text-sm">
-                      <span className="font-mono text-xs font-semibold text-pine">{a.type || "EVENT"}</span>
+                    <li key={i} className="rounded-xl border border-line bg-panel px-3 py-2 text-sm">
+                      <span className="font-mono text-xs font-semibold text-acid">{a.type || "EVENT"}</span>
                       <span className="ml-2 break-words">{a.message || JSON.stringify(a)}</span>
                     </li>
                   ))}
@@ -489,20 +759,18 @@ export default function App() {
             </section>
           </div>
         ) : (
-          <div className="rounded-b-lg rounded-tr-lg border border-ink bg-paper2 p-4 shadow-file sm:p-6">
+          <div className="glass fade-up mt-4 rounded-3xl p-4 shadow-card sm:p-6">
             <Ledger grants={grants} />
           </div>
         )}
 
-        <footer className="mt-8 border-t border-rule pt-4 text-xs text-inksoft">
+        <footer className="mt-8 border-t border-line pt-4 text-xs leading-relaxed text-steel">
           <p>
-            Contract GMV v2.2 —{" "}
+            GrantFlow v3.3 —{" "}
             <a className="font-mono underline" href={explorerAddressUrl(CONTRACT_ADDRESS)} target="_blank" rel="noreferrer">
               {CONTRACT_ADDRESS}
             </a>{" "}
-            on Bradbury (chain 4221). Every number on this page is read live from that contract; every button
-            sends a real transaction signed by your wallet. Payouts are proven by the recipient&apos;s balance
-            change, not by the receipt alone. Explorer:{" "}
+            on Bradbury (chain 4221). Explorer:{" "}
             <a className="underline" href={EXPLORER_URL} target="_blank" rel="noreferrer">
               {EXPLORER_URL}
             </a>
@@ -511,18 +779,18 @@ export default function App() {
       </main>
 
       {/* Toasts */}
-      <div className="fixed bottom-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] space-y-2">
+      <div className="fixed bottom-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] space-y-2" aria-live="polite">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`rounded-lg border p-3 text-sm shadow-file ${
+            className={`fade-up rounded-2xl border bg-night2/90 p-3 text-sm shadow-card backdrop-blur-md ${
               t.kind === "error"
-                ? "border-red-300 bg-red-50"
+                ? "border-rose/40 bg-rose/10"
                 : t.kind === "warn"
-                  ? "border-amber-300 bg-amber-50"
+                  ? "border-gold/40 bg-gold/10"
                   : t.kind === "info"
-                    ? "border-sky-300 bg-sky-50"
-                    : "border-green-300 bg-green-50"
+                    ? "border-cyan/40 bg-cyan/10"
+                    : "border-mint/40 bg-mint/10"
             }`}
           >
             <p className="font-semibold">{t.title}</p>
@@ -544,22 +812,58 @@ export default function App() {
   );
 }
 
+function Stat({ label, value, mono, accent }) {
+  return (
+    <div className="glass fade-up rounded-2xl px-4 py-3 shadow-card">
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-steel">{label}</p>
+      <p
+        className={`mt-1 truncate text-lg font-bold ${accent ? "text-gradient" : ""} ${
+          mono ? "font-mono text-sm" : ""
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function OwnerTransfer({ onTransfer, busy }) {
   const [addr, setAddr] = useState("");
   return (
-    <span className="inline-flex flex-wrap items-center gap-2">
+    <span className="inline-flex w-full flex-wrap items-center gap-2 sm:w-auto">
       <input
         value={addr}
         onChange={(e) => setAddr(e.target.value)}
         placeholder="New owner 0x…"
-        className="w-64 rounded border border-rule bg-paper2 px-3 py-2 font-mono text-sm"
+        className="glass-input w-full rounded-xl px-3 py-2.5 font-mono text-sm sm:w-64"
       />
       <button
         onClick={() => addr.trim() && onTransfer(addr)}
         disabled={busy || !addr.trim()}
-        className="rounded bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        className="btn-ghost px-4 py-2.5 text-sm"
       >
         {busy ? "Working…" : "Transfer ownership"}
+      </button>
+    </span>
+  );
+}
+
+function RestorePending({ onRestore, busy }) {
+  const [addr, setAddr] = useState("");
+  return (
+    <span className="inline-flex w-full flex-wrap items-center gap-2">
+      <input
+        value={addr}
+        onChange={(e) => setAddr(e.target.value)}
+        placeholder="Restore a pending withdrawal — recipient 0x…"
+        className="glass-input w-full rounded-xl px-3 py-2.5 font-mono text-sm sm:w-80"
+      />
+      <button
+        onClick={() => addr.trim() && onRestore(addr)}
+        disabled={busy || !addr.trim()}
+        className="btn-ghost px-4 py-2.5 text-sm"
+      >
+        {busy ? "Working…" : "Restore pending"}
       </button>
     </span>
   );

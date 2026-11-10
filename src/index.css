@@ -2,20 +2,89 @@
 @tailwind components;
 @tailwind utilities;
 
+/* --- Theme tokens: dark "Aurora Deep Dark" is the default. Light is a
+   designed warm-paper palette, not an inversion (2026 calm-UI guidance). --- */
 :root {
+  color-scheme: dark;
+  --gf-night: 11 16 38;
+  --gf-night2: 14 21 51;
+  --gf-surface: 18 26 56;
+  --gf-surface2: 24 33 68;
+  --gf-mist: 245 247 255;
+  --gf-steel: 148 163 184;
+  --gf-acid-ink: 11 16 38;
+  --gf-line: rgba(255, 255, 255, 0.12);
+  --gf-line-strong: rgba(255, 255, 255, 0.22);
+  --gf-panel: rgba(255, 255, 255, 0.05);
+  --gf-panel-strong: rgba(255, 255, 255, 0.1);
+  --gf-panel-inset: rgba(0, 0, 0, 0.2);
+  --gf-glass-bg: rgba(255, 255, 255, 0.06);
+  --gf-glass-border: rgba(255, 255, 255, 0.1);
+  --gf-glass-strong-bg: rgba(11, 16, 38, 0.72);
+  --gf-glass-input-bg: rgba(255, 255, 255, 0.05);
+  --gf-glass-input-border: rgba(255, 255, 255, 0.14);
+  --gf-input-placeholder: #64748b;
+  --gf-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --gf-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+  --gf-shadow-card: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --gf-aurora-base: linear-gradient(180deg, #0b1026 0%, #0e1533 55%, #0b1026 100%);
+  --gf-aurora-1: rgba(124, 92, 255, 0.28);
+  --gf-aurora-2: rgba(34, 211, 238, 0.16);
+  --gf-aurora-3: rgba(244, 114, 182, 0.14);
+  --gf-blob-a: rgba(124, 92, 255, 0.5);
+  --gf-blob-b: rgba(34, 211, 238, 0.38);
+  --gf-blob-c: rgba(244, 114, 182, 0.32);
+  --gf-skeleton-base: rgba(255, 255, 255, 0.07);
+  --gf-skeleton-shine: rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="light"] {
   color-scheme: light;
+  --gf-night: 244 241 234;
+  --gf-night2: 255 255 255;
+  --gf-surface: 255 255 255;
+  --gf-surface2: 248 246 240;
+  --gf-mist: 19 28 46;
+  --gf-steel: 91 107 130;
+  --gf-acid-ink: 11 16 38;
+  --gf-line: rgba(19, 28, 46, 0.14);
+  --gf-line-strong: rgba(19, 28, 46, 0.28);
+  --gf-panel: rgba(19, 28, 46, 0.05);
+  --gf-panel-strong: rgba(19, 28, 46, 0.08);
+  --gf-panel-inset: rgba(19, 28, 46, 0.05);
+  --gf-glass-bg: rgba(255, 255, 255, 0.72);
+  --gf-glass-border: rgba(19, 28, 46, 0.1);
+  --gf-glass-strong-bg: rgba(244, 241, 234, 0.85);
+  --gf-glass-input-bg: rgba(255, 255, 255, 0.85);
+  --gf-glass-input-border: rgba(19, 28, 46, 0.16);
+  --gf-input-placeholder: #8a97a8;
+  --gf-scrollbar-thumb: rgba(19, 28, 46, 0.2);
+  --gf-scrollbar-thumb-hover: rgba(19, 28, 46, 0.36);
+  --gf-shadow-card: 0 8px 28px rgba(19, 28, 46, 0.12);
+  --gf-aurora-base: linear-gradient(180deg, #f4f1ea 0%, #ece8df 55%, #f4f1ea 100%);
+  --gf-aurora-1: rgba(124, 92, 255, 0.12);
+  --gf-aurora-2: rgba(34, 211, 238, 0.14);
+  --gf-aurora-3: rgba(244, 114, 182, 0.1);
+  --gf-blob-a: rgba(124, 92, 255, 0.28);
+  --gf-blob-b: rgba(34, 211, 238, 0.22);
+  --gf-blob-c: rgba(244, 114, 182, 0.18);
+  --gf-skeleton-base: rgba(19, 28, 46, 0.07);
+  --gf-skeleton-shine: rgba(19, 28, 46, 0.14);
 }
 
 html,
 body {
-  background-color: #f7f4ec;
-  color: #1c2430;
+  background-color: rgb(var(--gf-night));
+  color: rgb(var(--gf-mist));
   font-family: Inter, system-ui, sans-serif;
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: rgba(20, 83, 45, 0.25);
+  background: rgba(163, 230, 53, 0.35);
+  color: rgb(var(--gf-mist));
 }
 
 *::-webkit-scrollbar {
@@ -26,9 +95,389 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #d8d2c2;
+  background: var(--gf-scrollbar-thumb);
   border-radius: 8px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #b8b09a;
+  background: var(--gf-scrollbar-thumb-hover);
+}
+
+/* --- Aurora background: fixed gradient blobs behind everything --- */
+.aurora {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(1100px 600px at 85% -10%, var(--gf-aurora-1), transparent 60%),
+    radial-gradient(900px 520px at -10% 30%, var(--gf-aurora-2), transparent 60%),
+    radial-gradient(800px 500px at 60% 110%, var(--gf-aurora-3), transparent 60%),
+    var(--gf-aurora-base);
+}
+.aurora-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.55;
+}
+.aurora-blob-a {
+  width: 480px;
+  height: 480px;
+  top: -140px;
+  right: -80px;
+  background: radial-gradient(circle, var(--gf-blob-a), transparent 65%);
+  animation: auroraDrift 26s ease-in-out infinite alternate;
+}
+.aurora-blob-b {
+  width: 420px;
+  height: 420px;
+  top: 32%;
+  left: -160px;
+  background: radial-gradient(circle, var(--gf-blob-b), transparent 65%);
+  animation: auroraDrift 32s ease-in-out infinite alternate-reverse;
+}
+.aurora-blob-c {
+  width: 380px;
+  height: 380px;
+  bottom: -140px;
+  right: 22%;
+  background: radial-gradient(circle, var(--gf-blob-c), transparent 65%);
+  animation: auroraDrift 38s ease-in-out infinite alternate;
+}
+
+/* --- Liquid glass panels --- */
+.glass {
+  background: var(--gf-glass-bg);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--gf-glass-border);
+}
+.glass-strong {
+  background: var(--gf-glass-strong-bg);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--gf-glass-border);
+}
+.glass-input {
+  background: var(--gf-glass-input-bg);
+  border: 1px solid var(--gf-glass-input-border);
+  color: rgb(var(--gf-mist));
+}
+.glass-input::placeholder {
+  color: var(--gf-input-placeholder);
+}
+.glass-input:focus {
+  outline: none;
+  border-color: rgba(163, 230, 53, 0.6);
+  box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.15);
+}
+
+/* Gradient display text (wordmark, big numbers). */
+.text-gradient {
+  background: linear-gradient(92deg, #a3e635 0%, #22d3ee 55%, #7c5cff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Primary action button: acid lime, dark text, glow on hover. */
+.btn-primary {
+  background: #a3e635;
+  color: #0b1026;
+  border-radius: 9999px;
+  font-weight: 700;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #bef264;
+  box-shadow: 0 0 0 1px rgba(163, 230, 53, 0.35), 0 8px 32px rgba(163, 230, 53, 0.22);
+}
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+}
+
+/* Secondary action: glass outline. */
+.btn-ghost {
+  border: 1px solid var(--gf-line-strong);
+  background: var(--gf-panel);
+  color: rgb(var(--gf-mist));
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: rgba(163, 230, 53, 0.5);
+  background: var(--gf-panel-strong);
+}
+.btn-ghost:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-ghost:disabled {
+  opacity: 0.5;
+}
+
+/* Staggered entrance. */
+.fade-up {
+  animation: fadeUp 0.5s ease both;
+}
+.fade-up-1 { animation-delay: 0.05s; }
+.fade-up-2 { animation-delay: 0.12s; }
+.fade-up-3 { animation-delay: 0.19s; }
+.fade-up-4 { animation-delay: 0.26s; }
+
+/* Loading skeleton: structure before content, shimmer instead of a spinner
+   (2026 guidance — skeletons beat spinners for perceived speed). */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  border-radius: 0.75rem;
+  background: linear-gradient(
+    90deg,
+    var(--gf-skeleton-base) 0%,
+    var(--gf-skeleton-shine) 50%,
+    var(--gf-skeleton-base) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* Focus visibility for keyboard users. */
+:focus-visible {
+  outline: 2px solid rgba(163, 230, 53, 0.8);
+  outline-offset: 2px;
+}
+
+/* --- Premium: liquid-glass milestone cards ---
+   Layered glass + a 1px chromatic edge that appears on hover/focus.
+   The edge is a conic-gradient border painted via mask, so it costs no
+   extra element. Reduced motion keeps the static glass, no shimmer. */
+.milestone-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.milestone-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from 210deg,
+    rgba(34, 211, 238, 0.55),
+    rgba(124, 92, 255, 0.35) 30%,
+    rgba(244, 114, 182, 0.45) 55%,
+    rgba(163, 230, 53, 0.4) 80%,
+    rgba(34, 211, 238, 0.55)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+.milestone-card:hover::before,
+.milestone-card:focus-within::before {
+  opacity: 1;
+}
+.milestone-card > * {
+  position: relative;
+  z-index: 2;
+}
+/* Partial-payout liquid: aurora liquid rising from the bottom of the card,
+   height = the jury's payout_pct (on-chain). Slow drift, no motion when
+   reduced motion is preferred. */
+.liquid-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  background:
+    linear-gradient(180deg, rgba(250, 204, 21, 0.28) 0%, rgba(250, 204, 21, 0.12) 60%, rgba(250, 204, 21, 0.05) 100%);
+  border-top: 1px solid rgba(250, 204, 21, 0.35);
+  animation: liquidDrift 9s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes liquidDrift {
+  from { transform: translateY(2px); }
+  to { transform: translateY(-2px); }
+}
+
+/* --- Premium: deadline aurora ring ---
+   The ring depletes over the last 7 days before the deadline (the same
+   window the countdown chip's tones use); beyond 7 days it stays full and
+   calm. Colour follows the chip tone; gentle pulse under 24h. */
+.deadline-ring {
+  flex: none;
+  animation: none;
+}
+.deadline-ring--urgent {
+  animation: ringPulse 1.6s ease-in-out infinite;
+}
+@keyframes ringPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* --- Premium: verdict seal materialization ---
+   On first sight of a verdict in this session, the seal assembles from
+   particles over ~1.2s, then settles with a soft flash. After that it
+   renders settled. Reduced motion: settled immediately, no particles. */
+.verdict-seal {
+  position: relative;
+  flex: none;
+  width: 64px;
+  height: 64px;
+}
+.verdict-seal svg.seal-ring {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.verdict-seal .seal-word {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  padding: 0 8px;
+}
+.verdict-seal--animating .seal-ring {
+  animation: sealSettle 1.2s ease-out both;
+}
+.verdict-seal--animating .seal-particle {
+  animation: sealParticle 1.2s ease-out both;
+}
+.verdict-seal--animating .seal-word {
+  animation: sealWordIn 1.2s ease-out both;
+}
+@keyframes sealSettle {
+  0% { transform: scale(0.6) rotate(-18deg); opacity: 0; filter: drop-shadow(0 0 0 rgba(163, 230, 53, 0)); }
+  55% { transform: scale(1.06) rotate(2deg); opacity: 1; }
+  80% { transform: scale(1); filter: drop-shadow(0 0 14px rgba(163, 230, 53, 0.55)); }
+  100% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 4px rgba(163, 230, 53, 0.25)); }
+}
+@keyframes sealParticle {
+  0% { opacity: 0; transform: translate(var(--px), var(--py)) scale(0.4); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: translate(0, 0) scale(1); }
+}
+@keyframes sealWordIn {
+  0%, 45% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* --- Premium: grounding receipt paper slip ---
+   A thin translucent slip that slides out from under the verdict card.
+   Grid-rows animation keeps it smooth without a fixed height. */
+.receipt-slip {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s ease;
+}
+.receipt-slip--open {
+  grid-template-rows: 1fr;
+}
+.receipt-slip__inner {
+  overflow: hidden;
+}
+.receipt-slip__paper {
+  background: var(--gf-panel);
+  border: 1px dashed var(--gf-line-strong);
+  border-radius: 0 0 1rem 1rem;
+  border-top: none;
+}
+
+/* --- Premium: living aurora river ---
+   A flowing stream behind the milestone list. The current milestone sits
+   in the brightest current; past milestones leave a fading wake. */
+.milestone-river {
+  position: relative;
+}
+.milestone-river::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    180deg,
+    rgba(34, 211, 238, 0.7),
+    rgba(124, 92, 255, 0.55) 35%,
+    rgba(244, 114, 182, 0.5) 70%,
+    rgba(34, 211, 238, 0.7)
+  );
+  background-size: 100% 220%;
+  animation: riverFlow 7s linear infinite;
+  opacity: 0.75;
+  pointer-events: none;
+}
+@keyframes riverFlow {
+  from { background-position: 0 0; }
+  to { background-position: 0 220%; }
+}
+.river-current {
+  box-shadow: 0 0 0 1px rgba(163, 230, 53, 0.35), 0 0 28px rgba(34, 211, 238, 0.16);
+}
+.river-past {
+  opacity: 0.92;
+}
+.river-past::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22px;
+  border-radius: 0 0 1rem 1rem;
+  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.08));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* --- Premium: spatial Public Ledger depth ---
+   Rows are newest-first; each step back loses a little light and sharpness,
+   sinking into the aurora mist. Depth is capped so every row stays readable. */
+.ledger-depth {
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+/* Honor reduced motion: no aurora drift, no entrance animation, no shimmer. */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob,
+  .fade-up,
+  .fade-up-1,
+  .fade-up-2,
+  .fade-up-3,
+  .fade-up-4,
+  .skeleton,
+  .liquid-fill,
+  .milestone-river::before,
+  .deadline-ring--urgent,
+  .verdict-seal--animating .seal-ring,
+  .verdict-seal--animating .seal-particle,
+  .verdict-seal--animating .seal-word {
+    animation: none !important;
+  }
+  .btn-primary,
+  .btn-ghost {
+    transition: none;
+  }
 }

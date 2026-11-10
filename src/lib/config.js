@@ -1,11 +1,9 @@
 // GrantFlow + Public Ledger — Bradbury configuration.
-// Contract: GMV v2.2 (Faucet EVM-proxy _pay, Twin14 allocation). Payout proven live.
-// Do NOT point this at v2.1 (0x8B96142B...) — its payout is broken and it holds
-// stranded GEN — or at the StudioNet contract (different network).
+// Contract: GrantFlow v3.3 on GenLayer Bradbury (chain 4221).
 
 export const CONTRACT_ADDRESS =
   import.meta.env.VITE_CONTRACT_ADDRESS ||
-  "0x539133B55522bD3f461F36bcA27Cf1bA9A25F5D8";
+  "0x508fdD2b24F990db944Fa6aEcD590615Cfb9A183";
 
 export const CHAIN_ID = 4221;
 export const CHAIN_ID_HEX = "0x107d"; // 4221
