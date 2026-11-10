@@ -33,8 +33,11 @@ receipt, readable by anyone.
 
 ## The contract
 
-Source: [`contracts/GrantMilestoneVerifier.py`](contracts/GrantMilestoneVerifier.py)
-(SHA-256 `00768c91b4ce5a3cebc98527694c00b1f9b35d9c9aeb89b5e0df6041bfc4a96d`)
+The contract is a separate project from this dApp. Its home is the
+Grant Milestone Verifier repository:
+https://github.com/amhamza125/grant-milestone-verifier — the Bradbury v2.2
+source lives there under `bradbury/` (SHA-256
+`00768c91b4ce5a3cebc98527694c00b1f9b35d9c9aeb89b5e0df6041bfc4a96d`).
 
 | | |
 |---|---|
@@ -133,8 +136,6 @@ by this app. The Twin14 payout allocation is wired into `src/lib/genlayer.js`
 ## Repository layout
 
 ```text
-contracts/
-  GrantMilestoneVerifier.py   # GMV v2.2 contract source (Bradbury)
 src/
   App.jsx                     # GrantFlow + Ledger views
   lib/
