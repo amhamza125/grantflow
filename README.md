@@ -126,6 +126,7 @@ Design properties, all enforced in the contract:
   cancel and expiry paths.
 - **Current state** — contract balance == locked == 0.001 GEN (one
   in-flight grant); claimable 0; pending 0.
+- **Full verification record** — [TEST_REPORT.md](TEST_REPORT.md)
 
 ## How payouts work
 
