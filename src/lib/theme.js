@@ -1,11 +1,11 @@
-// Theme: dark "Aurora Deep Dark" is the default. First load respects the
-// system preference; the manual toggle wins after that and is persisted
-// in localStorage (2026 guidance — detect first, toggle persisted).
+// Theme: light warm alabaster is the default. First load respects a saved
+// choice; without one the light theme wins (dark is the manual toggle).
+// The choice is persisted in localStorage.
 const STORAGE_KEY = "grantflow-theme";
 
 export function systemTheme() {
-  if (typeof window === "undefined" || !window.matchMedia) return "dark";
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  if (typeof window === "undefined" || !window.matchMedia) return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export function initialTheme() {
@@ -13,9 +13,9 @@ export function initialTheme() {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (saved === "light" || saved === "dark") return saved;
   } catch {
-    // Storage unavailable (private mode) — fall through to the system.
+    // Storage unavailable (private mode) — fall through to the default.
   }
-  return systemTheme();
+  return "light";
 }
 
 export function applyTheme(theme) {

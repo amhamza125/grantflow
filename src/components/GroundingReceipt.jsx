@@ -1,15 +1,30 @@
 // Grounding receipt as an expanding paper slip.
-// The verdict's grounding receipt — artifacts fetched, primary sha256,
+// The verdict's grounding receipt — artifacts fetched, evidence sha256
+// (SHA-256 of ALL fetched cleaned evidence bodies, joined in link order),
 // and the jury's reasons quoted — opens as a thin translucent slip sliding
 // out from under the verdict card. Everything shown comes from the verdict
-// stored on chain; nothing is paraphrased or added.
+// stored on chain; nothing is paraphrased or added. The score stays null
+// and the reasons stay generic by design — the receipt proves which
+// artifacts were hashed, not the full reasoning behind the verdict.
 import React, { useState } from "react";
 
-export default function GroundingReceipt({ verdict }) {
-  const [open, setOpen] = useState(false);
+export default function GroundingReceipt({ verdict, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [copied, setCopied] = useState(false);
   const grounding = verdict.grounding || {};
   const reasons = verdict.reasons || [];
-  const slipId = `receipt-${verdict.primary_sha256 || "na"}`.slice(0, 48);
+  const evidenceSha = grounding.evidence_sha256 || grounding.primary_sha256 || null;
+  const slipId = `receipt-${evidenceSha || "na"}`.slice(0, 48);
+  const copySha = async () => {
+    if (!evidenceSha) return;
+    try {
+      await navigator.clipboard.writeText(evidenceSha);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable — the hash stays visible above.
+    }
+  };
 
   return (
     <div className="mt-2">
@@ -32,9 +47,25 @@ export default function GroundingReceipt({ verdict }) {
                 <dt className="text-steel">Artifacts fetched:</dt>
                 <dd>{grounding.artifacts_fetched ?? "not recorded"}</dd>
               </div>
+              {grounding.artifacts_unavailable !== undefined && grounding.artifacts_unavailable !== null && Number(grounding.artifacts_unavailable) > 0 && (
+                <div className="flex flex-wrap gap-x-2">
+                  <dt className="text-steel">Artifacts unavailable:</dt>
+                  <dd>{grounding.artifacts_unavailable}</dd>
+                </div>
+              )}
               <div>
-                <dt className="text-steel">Primary sha256:</dt>
-                <dd className="break-all">{grounding.primary_sha256 || "not recorded"}</dd>
+                <dt className="text-steel">Evidence sha256 (all fetched bodies):</dt>
+                <dd className="break-all">{evidenceSha || "not recorded"}</dd>
+                {evidenceSha && (
+                  <dd className="mt-1">
+                    <button
+                      onClick={copySha}
+                      className="rounded-full border border-line bg-panel px-3 py-1.5 font-sans text-xs font-semibold transition hover:border-acid/60"
+                    >
+                      {copied ? "✓ Copied" : "⧉ Copy hash"}
+                    </button>
+                  </dd>
+                )}
               </div>
             </dl>
             {reasons.length > 0 && (

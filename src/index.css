@@ -2,74 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --- Theme tokens: dark "Aurora Deep Dark" is the default. Light is a
-   designed warm-paper palette, not an inversion (2026 calm-UI guidance). --- */
+/* --- Theme tokens: light warm alabaster is the default ("Institutional
+   Escrow, Not Crypto Casino" — Stripe / Mercury / Linear calm). Dark is a
+   clean carbon mode, zero neon glow. Semantic accents: emerald #0F766E
+   (primary + MET), amber #B45309 (PARTIAL + pending), crimson #BE123C
+   (NOT_MET / expired / rejected), cobalt #1D4ED8 (assessment in progress).
+   Tabular numbers everywhere so GEN amounts and hashes read like a ledger. --- */
 :root {
-  color-scheme: dark;
-  --gf-night: 11 16 38;
-  --gf-night2: 14 21 51;
-  --gf-surface: 18 26 56;
-  --gf-surface2: 24 33 68;
-  --gf-mist: 245 247 255;
-  --gf-steel: 148 163 184;
-  --gf-acid-ink: 11 16 38;
-  --gf-line: rgba(255, 255, 255, 0.12);
-  --gf-line-strong: rgba(255, 255, 255, 0.22);
-  --gf-panel: rgba(255, 255, 255, 0.05);
-  --gf-panel-strong: rgba(255, 255, 255, 0.1);
-  --gf-panel-inset: rgba(0, 0, 0, 0.2);
-  --gf-glass-bg: rgba(255, 255, 255, 0.06);
-  --gf-glass-border: rgba(255, 255, 255, 0.1);
-  --gf-glass-strong-bg: rgba(11, 16, 38, 0.72);
-  --gf-glass-input-bg: rgba(255, 255, 255, 0.05);
-  --gf-glass-input-border: rgba(255, 255, 255, 0.14);
-  --gf-input-placeholder: #64748b;
-  --gf-scrollbar-thumb: rgba(255, 255, 255, 0.16);
-  --gf-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
-  --gf-shadow-card: 0 8px 32px rgba(0, 0, 0, 0.35);
-  --gf-aurora-base: linear-gradient(180deg, #0b1026 0%, #0e1533 55%, #0b1026 100%);
-  --gf-aurora-1: rgba(124, 92, 255, 0.28);
-  --gf-aurora-2: rgba(34, 211, 238, 0.16);
-  --gf-aurora-3: rgba(244, 114, 182, 0.14);
-  --gf-blob-a: rgba(124, 92, 255, 0.5);
-  --gf-blob-b: rgba(34, 211, 238, 0.38);
-  --gf-blob-c: rgba(244, 114, 182, 0.32);
-  --gf-skeleton-base: rgba(255, 255, 255, 0.07);
-  --gf-skeleton-shine: rgba(255, 255, 255, 0.16);
-}
-
-[data-theme="light"] {
   color-scheme: light;
-  --gf-night: 244 241 234;
+  --gf-night: 248 247 244;
   --gf-night2: 255 255 255;
   --gf-surface: 255 255 255;
-  --gf-surface2: 248 246 240;
-  --gf-mist: 19 28 46;
-  --gf-steel: 91 107 130;
-  --gf-acid-ink: 11 16 38;
-  --gf-line: rgba(19, 28, 46, 0.14);
-  --gf-line-strong: rgba(19, 28, 46, 0.28);
-  --gf-panel: rgba(19, 28, 46, 0.05);
-  --gf-panel-strong: rgba(19, 28, 46, 0.08);
-  --gf-panel-inset: rgba(19, 28, 46, 0.05);
-  --gf-glass-bg: rgba(255, 255, 255, 0.72);
-  --gf-glass-border: rgba(19, 28, 46, 0.1);
-  --gf-glass-strong-bg: rgba(244, 241, 234, 0.85);
-  --gf-glass-input-bg: rgba(255, 255, 255, 0.85);
-  --gf-glass-input-border: rgba(19, 28, 46, 0.16);
-  --gf-input-placeholder: #8a97a8;
-  --gf-scrollbar-thumb: rgba(19, 28, 46, 0.2);
-  --gf-scrollbar-thumb-hover: rgba(19, 28, 46, 0.36);
-  --gf-shadow-card: 0 8px 28px rgba(19, 28, 46, 0.12);
-  --gf-aurora-base: linear-gradient(180deg, #f4f1ea 0%, #ece8df 55%, #f4f1ea 100%);
-  --gf-aurora-1: rgba(124, 92, 255, 0.12);
-  --gf-aurora-2: rgba(34, 211, 238, 0.14);
-  --gf-aurora-3: rgba(244, 114, 182, 0.1);
-  --gf-blob-a: rgba(124, 92, 255, 0.28);
-  --gf-blob-b: rgba(34, 211, 238, 0.22);
-  --gf-blob-c: rgba(244, 114, 182, 0.18);
-  --gf-skeleton-base: rgba(19, 28, 46, 0.07);
-  --gf-skeleton-shine: rgba(19, 28, 46, 0.14);
+  --gf-surface2: 248 247 244;
+  --gf-mist: 17 19 24;
+  --gf-steel: 90 96 109;
+  --gf-acid-ink: 255 255 255;
+  --gf-line: #e5e4df;
+  --gf-line-strong: #d8d7d0;
+  --gf-panel: #ffffff;
+  --gf-panel-strong: #f1f0eb;
+  --gf-panel-inset: #f4f3ef;
+  --gf-glass-bg: #ffffff;
+  --gf-glass-border: #e5e4df;
+  --gf-glass-strong-bg: #ffffff;
+  --gf-glass-input-bg: #ffffff;
+  --gf-glass-input-border: #d8d7d0;
+  --gf-input-placeholder: #8a919c;
+  --gf-scrollbar-thumb: rgba(17, 19, 24, 0.2);
+  --gf-scrollbar-thumb-hover: rgba(17, 19, 24, 0.36);
+  --gf-shadow-card: 0 1px 2px rgba(17, 19, 24, 0.06), 0 8px 24px rgba(17, 19, 24, 0.06);
+  --gf-skeleton-base: rgba(17, 19, 24, 0.06);
+  --gf-skeleton-shine: rgba(17, 19, 24, 0.12);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --gf-night: 13 14 17;
+  --gf-night2: 21 23 28;
+  --gf-surface: 21 23 28;
+  --gf-surface2: 13 14 17;
+  --gf-mist: 245 244 240;
+  --gf-steel: 154 160 170;
+  --gf-acid-ink: 255 255 255;
+  --gf-line: #262930;
+  --gf-line-strong: #34383f;
+  --gf-panel: #15171c;
+  --gf-panel-strong: #1d2026;
+  --gf-panel-inset: #0d0e11;
+  --gf-glass-bg: #15171c;
+  --gf-glass-border: #262930;
+  --gf-glass-strong-bg: #15171c;
+  --gf-glass-input-bg: #15171c;
+  --gf-glass-input-border: #34383f;
+  --gf-input-placeholder: #6b7280;
+  --gf-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --gf-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+  --gf-shadow-card: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --gf-skeleton-base: rgba(255, 255, 255, 0.07);
+  --gf-skeleton-shine: rgba(255, 255, 255, 0.14);
 }
 
 html,
@@ -78,12 +68,13 @@ body {
   color: rgb(var(--gf-mist));
   font-family: Inter, system-ui, sans-serif;
   font-size: 16px;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: rgba(163, 230, 53, 0.35);
+  background: rgba(15, 118, 110, 0.18);
   color: rgb(var(--gf-mist));
 }
 
@@ -102,61 +93,13 @@ body {
   background: var(--gf-scrollbar-thumb-hover);
 }
 
-/* --- Aurora background: fixed gradient blobs behind everything --- */
-.aurora {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(1100px 600px at 85% -10%, var(--gf-aurora-1), transparent 60%),
-    radial-gradient(900px 520px at -10% 30%, var(--gf-aurora-2), transparent 60%),
-    radial-gradient(800px 500px at 60% 110%, var(--gf-aurora-3), transparent 60%),
-    var(--gf-aurora-base);
-}
-.aurora-blob {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(70px);
-  opacity: 0.55;
-}
-.aurora-blob-a {
-  width: 480px;
-  height: 480px;
-  top: -140px;
-  right: -80px;
-  background: radial-gradient(circle, var(--gf-blob-a), transparent 65%);
-  animation: auroraDrift 26s ease-in-out infinite alternate;
-}
-.aurora-blob-b {
-  width: 420px;
-  height: 420px;
-  top: 32%;
-  left: -160px;
-  background: radial-gradient(circle, var(--gf-blob-b), transparent 65%);
-  animation: auroraDrift 32s ease-in-out infinite alternate-reverse;
-}
-.aurora-blob-c {
-  width: 380px;
-  height: 380px;
-  bottom: -140px;
-  right: 22%;
-  background: radial-gradient(circle, var(--gf-blob-c), transparent 65%);
-  animation: auroraDrift 38s ease-in-out infinite alternate;
-}
-
-/* --- Liquid glass panels --- */
+/* --- Flat panels: crisp 1px hairlines, no glass blur, no glow --- */
 .glass {
   background: var(--gf-glass-bg);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
   border: 1px solid var(--gf-glass-border);
 }
 .glass-strong {
   background: var(--gf-glass-strong-bg);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--gf-glass-border);
 }
 .glass-input {
@@ -169,29 +112,28 @@ body {
 }
 .glass-input:focus {
   outline: none;
-  border-color: rgba(163, 230, 53, 0.6);
-  box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.15);
+  border-color: rgba(15, 118, 110, 0.6);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
 }
 
-/* Gradient display text (wordmark, big numbers). */
+/* Accent text (wordmark, big numbers): solid emerald, never a gradient. */
 .text-gradient {
-  background: linear-gradient(92deg, #a3e635 0%, #22d3ee 55%, #7c5cff 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #0f766e;
+}
+[data-theme="dark"] .text-gradient {
+  color: #2dd4bf;
 }
 
-/* Primary action button: acid lime, dark text, glow on hover. */
+/* Primary action button: deep forest emerald, white text. */
 .btn-primary {
-  background: #a3e635;
-  color: #0b1026;
+  background: #0f766e;
+  color: #ffffff;
   border-radius: 9999px;
   font-weight: 700;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #bef264;
-  box-shadow: 0 0 0 1px rgba(163, 230, 53, 0.35), 0 8px 32px rgba(163, 230, 53, 0.22);
+  background: #0d675f;
 }
 .btn-primary:active:not(:disabled) {
   transform: scale(0.98);
@@ -200,7 +142,7 @@ body {
   opacity: 0.5;
 }
 
-/* Secondary action: glass outline. */
+/* Secondary action: hairline outline. */
 .btn-ghost {
   border: 1px solid var(--gf-line-strong);
   background: var(--gf-panel);
@@ -210,7 +152,7 @@ body {
   transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 .btn-ghost:hover:not(:disabled) {
-  border-color: rgba(163, 230, 53, 0.5);
+  border-color: rgba(15, 118, 110, 0.5);
   background: var(--gf-panel-strong);
 }
 .btn-ghost:active:not(:disabled) {
@@ -229,8 +171,7 @@ body {
 .fade-up-3 { animation-delay: 0.19s; }
 .fade-up-4 { animation-delay: 0.26s; }
 
-/* Loading skeleton: structure before content, shimmer instead of a spinner
-   (2026 guidance — skeletons beat spinners for perceived speed). */
+/* Loading skeleton: structure before content, shimmer instead of a spinner. */
 @keyframes shimmer {
   0% { background-position: -400px 0; }
   100% { background-position: 400px 0; }
@@ -249,53 +190,22 @@ body {
 
 /* Focus visibility for keyboard users. */
 :focus-visible {
-  outline: 2px solid rgba(163, 230, 53, 0.8);
+  outline: 2px solid rgba(15, 118, 110, 0.8);
   outline-offset: 2px;
 }
 
-/* --- Premium: liquid-glass milestone cards ---
-   Layered glass + a 1px chromatic edge that appears on hover/focus.
-   The edge is a conic-gradient border painted via mask, so it costs no
-   extra element. Reduced motion keeps the static glass, no shimmer. */
+/* --- Milestone cards: flat, hairline border, current one emerald --- */
 .milestone-card {
   position: relative;
   overflow: hidden;
   isolation: isolate;
 }
-.milestone-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: conic-gradient(
-    from 210deg,
-    rgba(34, 211, 238, 0.55),
-    rgba(124, 92, 255, 0.35) 30%,
-    rgba(244, 114, 182, 0.45) 55%,
-    rgba(163, 230, 53, 0.4) 80%,
-    rgba(34, 211, 238, 0.55)
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0;
-  transition: opacity 0.35s ease;
-  pointer-events: none;
-  z-index: 1;
-}
-.milestone-card:hover::before,
-.milestone-card:focus-within::before {
-  opacity: 1;
-}
 .milestone-card > * {
   position: relative;
   z-index: 2;
 }
-/* Partial-payout liquid: aurora liquid rising from the bottom of the card,
-   height = the jury's payout_pct (on-chain). Slow drift, no motion when
-   reduced motion is preferred. */
+/* Partial-payout fill: amber rising from the bottom of the card,
+   height = the jury's payout_pct (on-chain). */
 .liquid-fill {
   position: absolute;
   left: 0;
@@ -303,8 +213,8 @@ body {
   bottom: 0;
   z-index: 0;
   background:
-    linear-gradient(180deg, rgba(250, 204, 21, 0.28) 0%, rgba(250, 204, 21, 0.12) 60%, rgba(250, 204, 21, 0.05) 100%);
-  border-top: 1px solid rgba(250, 204, 21, 0.35);
+    linear-gradient(180deg, rgba(180, 83, 9, 0.16) 0%, rgba(180, 83, 9, 0.07) 60%, rgba(180, 83, 9, 0.03) 100%);
+  border-top: 1px solid rgba(180, 83, 9, 0.35);
   animation: liquidDrift 9s ease-in-out infinite alternate;
   pointer-events: none;
 }
@@ -313,10 +223,9 @@ body {
   to { transform: translateY(-2px); }
 }
 
-/* --- Premium: deadline aurora ring ---
-   The ring depletes over the last 7 days before the deadline (the same
-   window the countdown chip's tones use); beyond 7 days it stays full and
-   calm. Colour follows the chip tone; gentle pulse under 24h. */
+/* --- Deadline ring ---
+   The ring depletes over the last 7 days before the deadline; beyond 7 days
+   it stays full and calm. Colour follows the chip tone; gentle pulse under 24h. */
 .deadline-ring {
   flex: none;
   animation: none;
@@ -329,10 +238,10 @@ body {
   50% { opacity: 0.45; }
 }
 
-/* --- Premium: verdict seal materialization ---
+/* --- Verdict seal materialization ---
    On first sight of a verdict in this session, the seal assembles from
-   particles over ~1.2s, then settles with a soft flash. After that it
-   renders settled. Reduced motion: settled immediately, no particles. */
+   particles over ~1.2s, then settles. After that it renders settled.
+   Reduced motion: settled immediately, no particles. */
 .verdict-seal {
   position: relative;
   flex: none;
@@ -367,10 +276,10 @@ body {
   animation: sealWordIn 1.2s ease-out both;
 }
 @keyframes sealSettle {
-  0% { transform: scale(0.6) rotate(-18deg); opacity: 0; filter: drop-shadow(0 0 0 rgba(163, 230, 53, 0)); }
+  0% { transform: scale(0.6) rotate(-18deg); opacity: 0; filter: drop-shadow(0 0 0 rgba(15, 118, 110, 0)); }
   55% { transform: scale(1.06) rotate(2deg); opacity: 1; }
-  80% { transform: scale(1); filter: drop-shadow(0 0 14px rgba(163, 230, 53, 0.55)); }
-  100% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 4px rgba(163, 230, 53, 0.25)); }
+  80% { transform: scale(1); filter: drop-shadow(0 0 14px rgba(15, 118, 110, 0.35)); }
+  100% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 4px rgba(15, 118, 110, 0.2)); }
 }
 @keyframes sealParticle {
   0% { opacity: 0; transform: translate(var(--px), var(--py)) scale(0.4); }
@@ -382,8 +291,8 @@ body {
   100% { opacity: 1; transform: scale(1); }
 }
 
-/* --- Premium: grounding receipt paper slip ---
-   A thin translucent slip that slides out from under the verdict card.
+/* --- Grounding receipt paper slip ---
+   A thin slip that slides out from under the verdict card.
    Grid-rows animation keeps it smooth without a fixed height. */
 .receipt-slip {
   display: grid;
@@ -403,9 +312,9 @@ body {
   border-top: none;
 }
 
-/* --- Premium: living aurora river ---
-   A flowing stream behind the milestone list. The current milestone sits
-   in the brightest current; past milestones leave a fading wake. */
+/* --- Milestone stepper rail ---
+   A plain hairline rail behind the milestone list. The current milestone
+   sits on the brightest point; past milestones are slightly dimmed. */
 .milestone-river {
   position: relative;
 }
@@ -415,53 +324,27 @@ body {
   left: -6px;
   top: 8px;
   bottom: 8px;
-  width: 3px;
+  width: 2px;
   border-radius: 9999px;
-  background: linear-gradient(
-    180deg,
-    rgba(34, 211, 238, 0.7),
-    rgba(124, 92, 255, 0.55) 35%,
-    rgba(244, 114, 182, 0.5) 70%,
-    rgba(34, 211, 238, 0.7)
-  );
-  background-size: 100% 220%;
-  animation: riverFlow 7s linear infinite;
-  opacity: 0.75;
+  background: var(--gf-line-strong);
   pointer-events: none;
 }
-@keyframes riverFlow {
-  from { background-position: 0 0; }
-  to { background-position: 0 220%; }
-}
 .river-current {
-  box-shadow: 0 0 0 1px rgba(163, 230, 53, 0.35), 0 0 28px rgba(34, 211, 238, 0.16);
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.35);
 }
 .river-past {
   opacity: 0.92;
 }
-.river-past::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 22px;
-  border-radius: 0 0 1rem 1rem;
-  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.08));
-  pointer-events: none;
-  z-index: 1;
-}
 
-/* --- Premium: spatial Public Ledger depth ---
-   Rows are newest-first; each step back loses a little light and sharpness,
-   sinking into the aurora mist. Depth is capped so every row stays readable. */
+/* --- Public Ledger depth ---
+   Rows are newest-first; each step back loses a little light so the newest
+   row reads first. Depth is capped so every row stays readable. */
 .ledger-depth {
-  transition: opacity 0.3s ease, filter 0.3s ease;
+  transition: opacity 0.3s ease;
 }
 
-/* Honor reduced motion: no aurora drift, no entrance animation, no shimmer. */
+/* Honor reduced motion: no entrance animation, no shimmer, no drift. */
 @media (prefers-reduced-motion: reduce) {
-  .aurora-blob,
   .fade-up,
   .fade-up-1,
   .fade-up-2,
@@ -469,7 +352,6 @@ body {
   .fade-up-4,
   .skeleton,
   .liquid-fill,
-  .milestone-river::before,
   .deadline-ring--urgent,
   .verdict-seal--animating .seal-ring,
   .verdict-seal--animating .seal-particle,
@@ -481,3 +363,219 @@ body {
     transition: none;
   }
 }
+
+/* Scroll targets must land below the 56px sticky header, never under it.
+   The OKX video showed the grant file sliced by the header mid-scroll:
+   scroll-margin-top + instant (auto) scrolling in App.jsx fixes it. */
+#grant-file {
+  scroll-margin-top: 76px;
+}
+
+/* --- Rebuild: single centred column, cards, chips, pills, progress ---
+   Dark mode first, light second (both themes are CSS variables, so one
+   set of rules serves both). No fixed heights, no negative margins, no
+   absolute positioning over text — nothing here can overlap at 390px. */
+.gf-card {
+  background: var(--gf-glass-bg);
+  border: 1px solid var(--gf-glass-border);
+  border-radius: 1.25rem;
+  padding: 1rem;
+  box-shadow: var(--gf-shadow-card);
+  overflow-wrap: break-word;
+}
+.gf-card--selected {
+  border-color: rgba(15, 118, 110, 0.6);
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.25), var(--gf-shadow-card);
+}
+
+/* Status chips — solid tint + strong text, readable on both themes. */
+.chip {
+  display: inline-block;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  padding: 0.125rem 0.625rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.chip--good {
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.35);
+}
+.chip--warn {
+  color: #b45309;
+  background: rgba(180, 83, 9, 0.12);
+  border-color: rgba(180, 83, 9, 0.35);
+}
+.chip--bad {
+  color: #be123c;
+  background: rgba(190, 18, 60, 0.12);
+  border-color: rgba(190, 18, 60, 0.35);
+}
+.chip--info {
+  color: #1d4ed8;
+  background: rgba(29, 78, 216, 0.12);
+  border-color: rgba(29, 78, 216, 0.35);
+}
+[data-theme="dark"] .chip--good { color: #2dd4bf; }
+[data-theme="dark"] .chip--warn { color: #fbbf24; }
+[data-theme="dark"] .chip--bad { color: #fb7185; }
+[data-theme="dark"] .chip--info { color: #93c5fd; }
+
+/* Filter pills — the feed filter row. */
+.pill {
+  min-height: 2.75rem;
+  border-radius: 9999px;
+  border: 1px solid var(--gf-line-strong);
+  background: var(--gf-panel);
+  color: rgb(var(--gf-steel));
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.pill:hover {
+  border-color: rgba(15, 118, 110, 0.5);
+  color: rgb(var(--gf-mist));
+}
+.pill--active {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+/* Slim 4-dot progress: Funded → Evidence → Jury → Payout. Dots sit on a
+   hairline rail; labels wrap under their own dot, never over neighbours. */
+.progress-dots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.25rem;
+}
+.progress-step {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  text-align: center;
+}
+.progress-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  border: 2px solid var(--gf-line-strong);
+  background: var(--gf-panel);
+  color: rgb(var(--gf-steel));
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  flex: none;
+}
+.progress-dot--done {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+.progress-dot--current {
+  border-color: #0f766e;
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.12);
+}
+.progress-dot--failed {
+  border-color: #be123c;
+  background: rgba(190, 18, 60, 0.12);
+  color: #be123c;
+}
+.progress-dot--waiting {
+  opacity: 0.7;
+}
+.progress-label {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: rgb(var(--gf-steel));
+  overflow-wrap: break-word;
+}
+
+/* Small inline placeholder rows — at most 3, beside real content, never
+   a whole-page skeleton wall. Reuses the existing shimmer. */
+.skeleton-row {
+  background: var(--gf-glass-bg);
+  border: 1px solid var(--gf-glass-border);
+  border-radius: 1.25rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.skeleton-row__line {
+  display: block;
+  height: 0.875rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(
+    90deg,
+    var(--gf-skeleton-base) 0%,
+    var(--gf-skeleton-shine) 50%,
+    var(--gf-skeleton-base) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+.skeleton-row__line--short {
+  width: 45%;
+}
+
+/* Toasts — kind-tinted cards, icon + text + optional explorer link. */
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 1rem;
+  border: 1px solid var(--gf-glass-border);
+  background: var(--gf-glass-strong-bg);
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  box-shadow: var(--gf-shadow-card);
+  overflow-wrap: break-word;
+}
+.toast__icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.toast--ok { border-color: rgba(15, 118, 110, 0.4); }
+.toast--ok .toast__icon { background: rgba(15, 118, 110, 0.15); color: #0f766e; }
+.toast--error { border-color: rgba(190, 18, 60, 0.4); }
+.toast--error .toast__icon { background: rgba(190, 18, 60, 0.12); color: #be123c; }
+.toast--warn { border-color: rgba(180, 83, 9, 0.4); }
+.toast--warn .toast__icon { background: rgba(180, 83, 9, 0.12); color: #b45309; }
+.toast--info { border-color: rgba(29, 78, 216, 0.4); }
+.toast--info .toast__icon { background: rgba(29, 78, 216, 0.12); color: #1d4ed8; }
+[data-theme="dark"] .toast--ok .toast__icon { color: #2dd4bf; }
+[data-theme="dark"] .toast--error .toast__icon { color: #fb7185; }
+[data-theme="dark"] .toast--warn .toast__icon { color: #fbbf24; }
+[data-theme="dark"] .toast--info .toast__icon { color: #93c5fd; }
+
+/* 390px guard: nothing in the shell may force horizontal scrolling.
+   Long addresses and hashes wrap or break; the page itself never scrolls
+   sideways. */
+html,
+body {
+  overflow-x: hidden;
+}
+

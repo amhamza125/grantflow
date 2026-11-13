@@ -25,6 +25,7 @@ import {
   EXPLORER_URL,
   CONTRACT_ADDRESS,
 } from "./config.js";
+import { getActiveContract } from "./contract.js";
 
 // --- fee policy, copied from ~/workspace/gmv-bradbury/v2/fees.json --------
 // distribution.totalMessageFees is "0" there; the allocation builder below
@@ -115,21 +116,56 @@ export async function payoutFees(payee) {
 }
 
 // --- wallet ---------------------------------------------------------------
-export async function connectWallet() {
-  const eth = window.ethereum;
+// The active EIP-1193 provider. Injected wallets (window.ethereum or an
+// EIP-6963 provider) and WalletConnect both plug in here — writes never
+// assume window.ethereum. Defaults to window.ethereum when nothing was
+// chosen, so the old injected-only path keeps working.
+let activeProvider = null;
+export function setWalletProvider(p) {
+  activeProvider = p || null;
+}
+export function walletProvider() {
+  return activeProvider || (typeof window !== "undefined" ? window.ethereum : null);
+}
+
+export async function connectWallet(provider) {
+  const eth = provider || walletProvider();
   if (!eth) {
     throw new Error("No EVM wallet detected. Install MetaMask or Rabby first.");
   }
+  // ORDER MATTERS — accounts FIRST, chain switch second. OKX (and other
+  // in-app wallet browsers) require the site to be CONNECTED before any
+  // other request: a chain-switch call from an unauthorised site is
+  // silently dropped — no prompt, no error, the promise never settles.
+  // The old code switched chain first, which is exactly the hang Ameer
+  // filmed in the OKX app: "Connecting…" forever, no approval ever
+  // appearing. MetaMask happens to tolerate switch-first; OKX does not.
+  const accounts = await requestWithTimeout(eth, "eth_requestAccounts", null, "accounts");
+  if (!accounts || accounts.length === 0) {
+    throw new Error("No accounts authorized in wallet.");
+  }
   try {
-    await eth.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: CHAIN_ID_HEX }],
-    });
+    await requestWithTimeout(eth, "wallet_switchEthereumChain", [{ chainId: CHAIN_ID_HEX }], "chain switch");
   } catch (err) {
-    if (err && err.code === 4902) {
-      await eth.request({
-        method: "wallet_addEthereumChain",
-        params: [
+    // OKX Mobile (some versions) wraps an unrecognised custom chain in a
+    // nested provider error instead of the standard EIP-3085 code 4902:
+    // error.code -32603, or error.data.originalError.code 4902, or a
+    // message containing "Unrecognized chain ID" / "chainId". All of them
+    // mean the same thing — the chain is not added yet — so they all
+    // trigger wallet_addEthereumChain. (Gemini review, 2026-11-11.)
+    const code = err && err.code;
+    const nestedCode = err && err.data && err.data.originalError && err.data.originalError.code;
+    const msg = (err && err.message) || "";
+    const chainNotAdded =
+      code === 4902 ||
+      code === -32603 ||
+      nestedCode === 4902 ||
+      /unrecognized chain|chain.*not added|4902/i.test(msg);
+    if (chainNotAdded) {
+      await requestWithTimeout(
+        eth,
+        "wallet_addEthereumChain",
+        [
           {
             chainId: CHAIN_ID_HEX,
             chainName: CHAIN_NAME,
@@ -138,16 +174,33 @@ export async function connectWallet() {
             blockExplorerUrls: [EXPLORER_URL],
           },
         ],
-      });
+        "add chain"
+      );
     } else {
       throw err;
     }
   }
-  const accounts = await eth.request({ method: "eth_requestAccounts" });
-  if (!accounts || accounts.length === 0) {
-    throw new Error("No accounts authorized in wallet.");
-  }
   return accounts[0];
+}
+
+// A hung provider request must surface, never hang the tap: every wallet
+// call races a timeout with a step-specific error, so the user learns
+// WHICH step never answered instead of a generic 25s "did not respond".
+function requestWithTimeout(provider, method, params, stepLabel, timeoutMs = 12000) {
+  return Promise.race([
+    provider.request(params ? { method, params } : { method }),
+    new Promise((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              `The wallet did not answer the ${stepLabel} request. No approval appeared — the wallet may be locked, or the request was blocked. Try again.`
+            )
+          ),
+        timeoutMs
+      )
+    ),
+  ]);
 }
 
 // --- clients --------------------------------------------------------------
@@ -156,7 +209,7 @@ export function readClient() {
 }
 
 export function writeClient(account) {
-  return createClient({ chain: testnetBradbury, account, provider: window.ethereum });
+  return createClient({ chain: testnetBradbury, account, provider: walletProvider() });
 }
 
 // --- reads ----------------------------------------------------------------
@@ -183,13 +236,16 @@ export function parseJson(raw) {
   }
 }
 
-export async function readView(functionName, args = []) {
+// A read of a contract view method. `address` defaults to the active
+// contract (official v3.4, or the custom contract the user switched to this
+// session). Reads are safe against any address — the probe uses this.
+export async function readView(functionName, args = [], address) {
   const client = readClient();
-  return client.readContract({ address: CONTRACT_ADDRESS, functionName, args });
+  return client.readContract({ address: address || getActiveContract(), functionName, args });
 }
 
-export async function readJsonView(functionName, args = []) {
-  return parseJson(await readView(functionName, args));
+export async function readJsonView(functionName, args = [], address) {
+  return parseJson(await readView(functionName, args, address));
 }
 
 export async function ethBalance(address) {
@@ -232,17 +288,28 @@ export async function getPending(address) {
 /**
  * Send a write and wait for FINALIZED consensus.
  * `fees` must be payoutFees(payee) for _pay-emitting calls, baseFees() otherwise.
+ * `opts.address` — the contract to write to (defaults to the active contract).
+ * `opts.onHash` — called with the tx hash as soon as the wallet returns it,
+ *   BEFORE the receipt wait, so the caller can start live progress tracking
+ *   while consensus runs (an assess takes minutes).
  * Resolves with { hash, receipt }. Throws with a readable message on failure.
  */
-export async function sendWrite(account, functionName, args = [], value = 0n, fees = null) {
+export async function sendWrite(account, functionName, args = [], value = 0n, fees = null, opts = {}) {
   const client = writeClient(account);
   const hash = await client.writeContract({
-    address: CONTRACT_ADDRESS,
+    address: opts.address || getActiveContract(),
     functionName,
     args,
     value,
     fees: fees || baseFees(),
   });
+  if (typeof opts.onHash === "function") {
+    try {
+      opts.onHash(hash);
+    } catch {
+      // A progress hook must never break the write.
+    }
+  }
   let receipt = null;
   try {
     receipt = await client.waitForTransactionReceipt({

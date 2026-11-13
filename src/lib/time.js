@@ -42,3 +42,19 @@ export function deadlineDate(deadlineSec) {
     timeStyle: "short",
   });
 }
+
+/**
+ * Honest "last read" label for a unix-ms timestamp: "just now",
+ * "4 min ago", "2h ago", "3d ago". The StatsBar shows when the grants
+ * were last re-read from the chain — never a guessed time.
+ */
+export function timeAgo(tsMs) {
+  if (!tsMs) return "";
+  const s = Math.max(0, Math.floor((Date.now() - Number(tsMs)) / 1000));
+  if (s < 45) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}

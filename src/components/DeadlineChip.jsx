@@ -1,10 +1,10 @@
-// Deadline countdown chip + aurora ring — the milestone deadline made
+// Deadline countdown chip + ring — the milestone deadline made
 // glanceable. Reads only the on-chain deadline (unix seconds) and the
 // local clock.
 //
 // The ring depletes over the last 7 days before the deadline (the same
 // window the chip's tones use): full and calm beyond 7 days, draining to
-// empty at expiry, shifting cyan -> amber -> rose as time runs out, with a
+// empty at expiry, shifting cobalt -> amber -> crimson as time runs out, with a
 // gentle pulse in the last 24 hours. It visualises the same countdown the
 // chip already states — it never claims an elapsed fraction, because the
 // contract stores no milestone creation time.
@@ -19,10 +19,10 @@ const TONE_STYLE = {
 };
 
 const TONE_STROKE = {
-  ok: "#22d3ee",
-  soon: "#facc15",
-  urgent: "#fb7185",
-  expired: "#fb7185",
+  ok: "#1d4ed8",
+  soon: "#b45309",
+  urgent: "#be123c",
+  expired: "#be123c",
 };
 
 // Seconds of the ring's depletion window: the last 7 days.
