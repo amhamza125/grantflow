@@ -33,6 +33,9 @@ _DATAMARK = "§"
 # -- the two challenge-context codes do not exist in this variant, and
 # verdicts are final under the v3.4 rule (first-round verdict final,
 # except the one-time builder appeal after NOT_MET).
+# GrantFlow v3.5 F3: builder on-chain record — per-builder final-verdict
+# counters, counted exactly once per milestone when a verdict becomes
+# final (record_counted guard), plus a grants counter at FUNDED.
 
 
 # v3.5 F1: closed reason-code set. The jury agrees on the code under
@@ -193,6 +196,8 @@ class GrantFlow(gl.contract.Contract):
   total_pending_wei: bigint
   locked_wei: bigint
   total_assess_attempts: bigint
+  builder_records: TreeMap[str, str]  # v3.5 F3: builder address -> JSON record
+  total_final_verdicts: bigint
 
   def __init__(self):
     self.owner = str(gl.message.sender_address).lower()
@@ -205,6 +210,7 @@ class GrantFlow(gl.contract.Contract):
     self.total_pending_wei = 0
     self.locked_wei = 0
     self.total_assess_attempts = 0
+    self.total_final_verdicts = 0
 
   def _load(self, grant_id: bigint):
     gid = str(int(grant_id))
@@ -258,6 +264,38 @@ class GrantFlow(gl.contract.Contract):
     data["current_milestone"] = int(data["current_milestone"]) + 1
     if int(data["current_milestone"]) >= len(data["milestones"]):
       data["status"] = "COMPLETE"
+
+  def _builder_rec(self, builder: str) -> dict:
+    if builder in self.builder_records:
+      return json.loads(self.builder_records[builder])
+    return {"met": 0, "partial": 0, "not_met": 0, "assessed": 0, "grants": 0}
+
+  def _record_final_verdict(self, builder: str, verdict: str, ms: dict) -> None:
+    # v3.5 F3 (§4.2): count a verdict exactly once, when it becomes
+    # final. The record_counted guard on the milestone makes
+    # double-counting impossible by construction; every call site
+    # routes through here.
+    if ms.get("record_counted"):
+      return
+    ms["record_counted"] = True
+    rec = self._builder_rec(builder)
+    if verdict == "MET":
+      rec["met"] = int(rec["met"]) + 1
+    elif verdict == "PARTIAL":
+      rec["partial"] = int(rec["partial"]) + 1
+    else:
+      rec["not_met"] = int(rec["not_met"]) + 1
+    rec["assessed"] = int(rec["assessed"]) + 1
+    self.builder_records[builder] = json.dumps(rec)
+    self.total_final_verdicts += 1
+
+  def _count_grant_funded(self, builder: str) -> None:
+    # v3.5 F3 (§4.2): the grants counter increments once per builder
+    # when a grant naming them reaches FUNDED — not at create_grant
+    # (creation is free and spam-able; funding is real escrow).
+    rec = self._builder_rec(builder)
+    rec["grants"] = int(rec["grants"]) + 1
+    self.builder_records[builder] = json.dumps(rec)
 
   @gl.public.write
   def create_grant(self, builder: str, title: str, milestones_json: str) -> str:
@@ -321,6 +359,7 @@ class GrantFlow(gl.contract.Contract):
         "assess_attempts": 0,
         "not_met_count": 0,
         "last_evidence_error": None,
+        "record_counted": False,
       })
     if total >= 2**256:
       raise gl.vm.UserError("INVALID_MILESTONES")
@@ -380,6 +419,7 @@ class GrantFlow(gl.contract.Contract):
       self._credit(sender, value)
       return "FUND_REJECTED: ESCROW_MISMATCH -- sent value differs from the grant total, recorded as claimable; call withdraw_claim."
     data["status"] = "FUNDED"
+    self._count_grant_funded(data["builder"])
     self.locked_wei += int(value)
     self._save(gid, data)
     self._log({
@@ -648,6 +688,9 @@ class GrantFlow(gl.contract.Contract):
       else:
         ms["status"] = "OPEN"
         ms["evidence"] = None
+    if is_appeal:
+      # v3.5 F3 (§4.2): an appeal verdict is final at record time.
+      self._record_final_verdict(data["builder"], verdict, ms)
     self._save(gid, data)
     self.total_assessed += 1
     self._log({
@@ -713,6 +756,10 @@ class GrantFlow(gl.contract.Contract):
     self._credit(data["builder"], u256(paid))
     self._credit(data["grantor"], u256(remainder))
     self.locked_wei -= amount
+    # v3.5 F3 (§4.2): a first-round verdict becomes final at release
+    # and is counted here; appeal verdicts were already counted at
+    # record time and the guard makes this a no-op.
+    self._record_final_verdict(data["builder"], v.get("verdict"), ms)
     ms["status"] = "VERIFIED"
     self._advance(data)
     self._save(gid, data)
@@ -751,6 +798,13 @@ class GrantFlow(gl.contract.Contract):
     refund = amount - paid
     if refund < 0:
       raise gl.vm.UserError("BAD_STATE")
+    # v3.5 F3 (§4.2): closing a milestone that carries an uncounted
+    # NOT_MET verdict counts it — abandoning a failed milestone and
+    # letting it expire cannot dodge the record. Appeal NOT_METs were
+    # counted at record time; the guard no-ops them.
+    _v = ms.get("verdict") or {}
+    if _v.get("verdict") == "NOT_MET":
+      self._record_final_verdict(data["builder"], "NOT_MET", ms)
     data["refunded_wei"] = str(int(data["refunded_wei"]) + refund)
     ms["refunded_wei"] = str(int(ms.get("refunded_wei", "0")) + refund)
     ms["status"] = "EXPIRED"
@@ -798,6 +852,11 @@ class GrantFlow(gl.contract.Contract):
       raise gl.vm.UserError("PENDING_PAYOUT")
     if ms["status"] == "OPEN" and ms.get("appeal_pending"):
       raise gl.vm.UserError("APPEAL_PENDING")
+    # v3.5 F3 (§4.2): if cancel closes a milestone carrying an
+    # uncounted NOT_MET verdict, count it at close time.
+    _v = ms.get("verdict") or {}
+    if _v.get("verdict") == "NOT_MET":
+      self._record_final_verdict(data["builder"], "NOT_MET", ms)
     refund = u256(int(data["total_escrow_wei"]) - int(data["released_wei"]) - int(data["refunded_wei"]))
     data["refunded_wei"] = str(int(data["refunded_wei"]) + int(refund))
     # v3.4: attribute the refund per remaining milestone. For each
@@ -972,6 +1031,14 @@ class GrantFlow(gl.contract.Contract):
     return self.pending_claims[a]
 
   @gl.public.view
+  def get_builder_record(self, address: str) -> str:
+    a = address.strip().lower()
+    rec = self._builder_rec(a)
+    assessed = int(rec["assessed"])
+    rec["success_pct"] = ((int(rec["met"]) + int(rec["partial"])) * 100) // assessed if assessed > 0 else 0
+    return json.dumps(rec)
+
+  @gl.public.view
   def get_grants_for_party(self, party: str) -> str:
     party = party.strip().lower()
     if party not in self.party_grants:
@@ -1003,6 +1070,7 @@ class GrantFlow(gl.contract.Contract):
       "grant_count": str(self.grant_count),
       "total_assessed": str(self.total_assessed),
       "total_assess_attempts": str(self.total_assess_attempts),
+      "total_final_verdicts": str(self.total_final_verdicts),
       "total_claimable_wei": str(self.total_claimable_wei),
       "total_pending_wei": str(self.total_pending_wei),
       "locked_wei": str(self.locked_wei),
