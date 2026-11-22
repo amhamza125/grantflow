@@ -17,6 +17,9 @@ _EXCERPT_HEAD_LEN = 1400
 _EXCERPT_TAIL_LEN = 1400
 _MIN_ARTIFACT_LEN = 20
 _PENDING_MIN_AGE = 600
+_MAX_FUNDERS = 20
+_MIN_CONTRIBUTION_PCT = 5
+_FUNDING_WINDOW = 604800
 _DATAMARK = "§"
 # GrantFlow v3.4: pending-withdrawal pull pattern; atomic PARTIAL; deadlines
 # strictly increasing; timely submissions judged past the deadline; NOT_MET
@@ -36,6 +39,11 @@ _DATAMARK = "§"
 # GrantFlow v3.5 F3: builder on-chain record — per-builder final-verdict
 # counters, counted exactly once per milestone when a verdict becomes
 # final (record_counted guard), plus a grants counter at FUNDED.
+# GrantFlow v3.5 F4: multi-funder co-funding — anyone but the builder
+# may contribute (>= 5% floor, exact remainder excepted, max 20
+# funders); every refund/remainder is one deterministic pro-rata split;
+# partial funding exits via creator cancel or permissionless
+# expire_funding after the 7-day funding deadline.
 
 
 # v3.5 F1: closed reason-code set. The jury agrees on the code under
@@ -297,6 +305,56 @@ class GrantFlow(gl.contract.Contract):
     rec["grants"] = int(rec["grants"]) + 1
     self.builder_records[builder] = json.dumps(rec)
 
+  def _split_pro_rata(self, funders: dict, amount: int) -> dict:
+    # v3.5 F4 (§5.3): the one deterministic split used by every
+    # refund/remainder path. Funders are ordered by address ascending;
+    # every funder except the largest contributor gets
+    # floor(amount * contrib / total_contrib); the largest contributor
+    # (ties: lexicographically greatest address) absorbs the residue,
+    # so the shares sum to amount exactly, to the wei. Zero shares are
+    # skipped. When amount == total_contrib every share equals its
+    # contribution exactly (pure-refund case). A single-funder map
+    # returns {funder: amount} — the v3.4 degenerate case.
+    if not funders or int(amount) <= 0:
+      return {}
+    total = sum(int(v) for v in funders.values())
+    if total <= 0:
+      return {}
+    largest = None
+    for addr in funders:
+      if (largest is None or int(funders[addr]) > int(funders[largest])
+          or (int(funders[addr]) == int(funders[largest]) and addr > largest)):
+        largest = addr
+    out = {}
+    assigned = 0
+    for addr in sorted(funders.keys()):
+      if addr == largest:
+        continue
+      share = (int(amount) * int(funders[addr])) // total
+      if share > 0:
+        out[addr] = share
+        assigned += share
+    rest = int(amount) - assigned
+    if rest > 0:
+      out[largest] = rest
+    return out
+
+  def _credit_split(self, data: dict, amount: int) -> dict:
+    # Credit amount to the grant's funders pro-rata (§5.3) through the
+    # existing _credit pull pattern — no new payout path. A grant with
+    # no recorded funders (impossible for v3.5-funded grants) falls
+    # back to the v3.4 single-grantor credit so a refund never strands.
+    funders = data.get("funders") or {}
+    if not funders:
+      if int(amount) > 0:
+        self._credit(data["grantor"], u256(int(amount)))
+        return {data["grantor"]: int(amount)}
+      return {}
+    split = self._split_pro_rata(funders, int(amount))
+    for addr, share in split.items():
+      self._credit(addr, u256(share))
+    return split
+
   @gl.public.write
   def create_grant(self, builder: str, title: str, milestones_json: str) -> str:
     if self.protocol_paused:
@@ -377,6 +435,9 @@ class GrantFlow(gl.contract.Contract):
       "released_wei": "0",
       "refunded_wei": "0",
       "status": "PENDING_FUNDING",
+      "funders": {},
+      "funded_wei": "0",
+      "funding_deadline": now + _FUNDING_WINDOW,
       "current_milestone": 0,
       "milestones": milestones,
     }
@@ -409,27 +470,65 @@ class GrantFlow(gl.contract.Contract):
       self._credit(sender, value)
       return "FUND_REJECTED: GRANT_NOT_FOUND -- sent value recorded as claimable; call withdraw_claim."
     data = json.loads(self.grants[gid])
-    if sender != data["grantor"]:
-      self._credit(sender, value)
-      return "FUND_REJECTED: ONLY_GRANTOR -- sent value recorded as claimable; call withdraw_claim."
     if data["status"] != "PENDING_FUNDING":
       self._credit(sender, value)
-      return "FUND_REJECTED: BAD_STATUS -- sent value recorded as claimable; call withdraw_claim."
-    if value != u256(int(data["total_escrow_wei"])):
+      reason = "FUNDING_COMPLETE" if data["status"] == "FUNDED" else "BAD_STATUS"
+      return f"FUND_REJECTED: {reason} -- sent value recorded as claimable; call withdraw_claim."
+    # v3.5 F4 (§5.2): any sender except the builder may contribute
+    # while PENDING_FUNDING. The three guards below are
+    # reject-to-claimable (the v3.4 honesty pattern): the sender's
+    # full value is credited back as claimable and the funder map is
+    # unchanged.
+    total = int(data["total_escrow_wei"])
+    funders = data.get("funders") or {}
+    funded = int(data.get("funded_wei", "0"))
+    if sender == data["builder"]:
       self._credit(sender, value)
-      return "FUND_REJECTED: ESCROW_MISMATCH -- sent value differs from the grant total, recorded as claimable; call withdraw_claim."
-    data["status"] = "FUNDED"
-    self._count_grant_funded(data["builder"])
-    self.locked_wei += int(value)
+      return "FUND_REJECTED: BUILDER_CANNOT_FUND -- sent value recorded as claimable; call withdraw_claim."
+    if sender not in funders and len(funders) >= _MAX_FUNDERS:
+      self._credit(sender, value)
+      return "FUND_REJECTED: TOO_MANY_FUNDERS -- sent value recorded as claimable; call withdraw_claim."
+    remaining = total - funded
+    accepted = min(int(value), remaining)
+    if accepted * 100 < _MIN_CONTRIBUTION_PCT * total and accepted != remaining:
+      self._credit(sender, value)
+      return "FUND_REJECTED: CONTRIBUTION_TOO_SMALL -- sent value recorded as claimable; call withdraw_claim."
+    excess = int(value) - accepted
+    funders[sender] = str(int(funders.get(sender, "0")) + accepted)
+    data["funders"] = funders
+    funded += accepted
+    data["funded_wei"] = str(funded)
+    self.locked_wei += accepted
+    self._index_party(sender, gid)
+    if excess > 0:
+      self._credit(sender, u256(excess))
+    if funded == total:
+      data["status"] = "FUNDED"
+      self._count_grant_funded(data["builder"])
+      self._save(gid, data)
+      self._log({
+        "type": "FUND",
+        "grant_id": int(gid),
+        "funder": sender,
+        "escrow_wei": str(total),
+        "funder_count": len(funders),
+        "message": f"GRANT_FUNDED: #{int(gid)} funded with {str(total)} wei from {len(funders)} funder(s)",
+      })
+      msg = f"GRANT_FUNDED: #{int(gid)} funded with {str(total)} wei from {len(funders)} funder(s)."
+      if excess > 0:
+        msg += f" Excess {str(excess)} wei recorded as claimable for the contributor."
+      return msg
     self._save(gid, data)
     self._log({
       "type": "FUND",
       "grant_id": int(gid),
-      "grantor": sender,
-      "escrow_wei": str(value),
-      "message": f"GRANT_FUNDED: #{int(gid)} funded with {str(value)} wei GEN",
+      "funder": sender,
+      "funded_wei": str(funded),
+      "escrow_wei": str(total),
+      "funder_count": len(funders),
+      "message": f"FUNDING_ACCEPTED: #{int(gid)} {str(funded)}/{str(total)} wei from {len(funders)} funder(s)",
     })
-    return f"GRANT_FUNDED: #{int(gid)} funded with {str(value)} wei GEN."
+    return f"FUNDING_ACCEPTED: #{int(gid)} {str(funded)}/{str(total)} wei from {len(funders)} funder(s)."
 
   @gl.public.write
   def submit_evidence(self, grant_id: bigint, evidence_json: str) -> str:
@@ -516,7 +615,8 @@ class GrantFlow(gl.contract.Contract):
       raise gl.vm.UserError("PROTOCOL_PAUSED")
     gid, data = self._load(grant_id)
     sender = self._sender()
-    if sender != data["grantor"] and sender != data["builder"]:
+    # v3.5 F4 (§5.4): any recorded funder may also trigger assessment.
+    if sender != data["grantor"] and sender != data["builder"] and sender not in (data.get("funders") or {}):
       raise gl.vm.UserError("ONLY_PARTY_ASSESS")
     if data["status"] != "FUNDED":
       raise gl.vm.UserError("BAD_STATUS")
@@ -730,7 +830,8 @@ class GrantFlow(gl.contract.Contract):
       raise gl.vm.UserError("PROTOCOL_PAUSED")
     gid, data = self._load(grant_id)
     sender = self._sender()
-    if sender != data["grantor"] and sender != data["builder"]:
+    # v3.5 F4 (§5.4): any recorded funder may also trigger release.
+    if sender != data["grantor"] and sender != data["builder"] and sender not in (data.get("funders") or {}):
       raise gl.vm.UserError("ONLY_PARTY_RELEASE")
     if data["status"] != "FUNDED":
       raise gl.vm.UserError("BAD_STATUS")
@@ -754,7 +855,9 @@ class GrantFlow(gl.contract.Contract):
     ms["paid_pct"] = pct
     ms["refunded_wei"] = str(remainder)
     self._credit(data["builder"], u256(paid))
-    self._credit(data["grantor"], u256(remainder))
+    # v3.5 F4 (§5.3/§5.4): the remainder goes to the funders pro-rata
+    # (a single-funder grant degenerates to the v3.4 grantor credit).
+    split = self._credit_split(data, remainder)
     self.locked_wei -= amount
     # v3.5 F3 (§4.2): a first-round verdict becomes final at release
     # and is counted here; appeal verdicts were already counted at
@@ -771,9 +874,10 @@ class GrantFlow(gl.contract.Contract):
       "payout_pct": pct,
       "amount_wei": str(paid),
       "builder": data["builder"],
-      "message": f"TRANCHE_RELEASED: grant #{int(gid)} milestone {mid} recorded {str(paid)} wei claimable by builder ({pct}%), {str(remainder)} wei claimable by grantor",
+      "remainder_split": {a: str(s) for a, s in split.items()},
+      "message": f"TRANCHE_RELEASED: grant #{int(gid)} milestone {mid} recorded {str(paid)} wei claimable by builder ({pct}%), {str(remainder)} wei claimable by funders pro-rata",
     })
-    return f"TRANCHE_RELEASED: grant #{int(gid)} milestone {mid} recorded {str(paid)} wei claimable by builder ({pct}%), {str(remainder)} wei claimable by grantor; withdraw via withdraw_claim."
+    return f"TRANCHE_RELEASED: grant #{int(gid)} milestone {mid} recorded {str(paid)} wei claimable by builder ({pct}%), {str(remainder)} wei claimable by funders pro-rata; withdraw via withdraw_claim."
 
   @gl.public.write
   def expire_milestone(self, grant_id: bigint) -> str:
@@ -809,7 +913,8 @@ class GrantFlow(gl.contract.Contract):
     ms["refunded_wei"] = str(int(ms.get("refunded_wei", "0")) + refund)
     ms["status"] = "EXPIRED"
     ms["evidence"] = None
-    self._credit(data["grantor"], u256(refund))
+    # v3.5 F4 (§5.3/§5.4): the refund goes to the funders pro-rata.
+    split = self._credit_split(data, refund)
     self.locked_wei -= refund
     self._advance(data)
     self._save(gid, data)
@@ -819,10 +924,10 @@ class GrantFlow(gl.contract.Contract):
       "milestone_id": mid,
       "deadline": deadline,
       "refund_wei": str(refund),
-      "grantor": data["grantor"],
-      "message": f"MILESTONE_EXPIRED: grant #{int(gid)} milestone {mid} passed its deadline, recorded {str(refund)} wei claimable by grantor",
+      "split": {a: str(s) for a, s in split.items()},
+      "message": f"MILESTONE_EXPIRED: grant #{int(gid)} milestone {mid} passed its deadline, recorded {str(refund)} wei claimable by funders pro-rata",
     })
-    return f"MILESTONE_EXPIRED: grant #{int(gid)} milestone {mid} passed its deadline, recorded {str(refund)} wei claimable by grantor; withdraw via withdraw_claim."
+    return f"MILESTONE_EXPIRED: grant #{int(gid)} milestone {mid} passed its deadline, recorded {str(refund)} wei claimable by funders pro-rata; withdraw via withdraw_claim."
 
   @gl.public.write
   def cancel_grant(self, grant_id: bigint) -> str:
@@ -830,15 +935,28 @@ class GrantFlow(gl.contract.Contract):
     if self._sender() != data["grantor"]:
       raise gl.vm.UserError("ONLY_GRANTOR")
     if data["status"] == "PENDING_FUNDING":
+      # v3.5 F4 (§5.2): a partially funded grant refunds every funder
+      # pro-rata from funded_wei — a pure refund of contributions, so
+      # each share equals the contribution exactly (§5.3). A
+      # zero-funded grant closes with no credits, as in v3.4.
+      funded = int(data.get("funded_wei", "0"))
+      split = {}
+      if funded > 0:
+        split = self._credit_split(data, funded)
+        self.locked_wei -= funded
+        data["refunded_wei"] = str(int(data["refunded_wei"]) + funded)
       data["status"] = "CANCELLED"
       self._save(gid, data)
       self._log({
         "type": "CANCEL",
         "grant_id": int(gid),
-        "refund_wei": "0",
-        "message": f"GRANT_CANCELLED: #{int(gid)} cancelled before funding",
+        "refund_wei": str(funded),
+        "split": {a: str(s) for a, s in split.items()},
+        "message": f"GRANT_CANCELLED: #{int(gid)} cancelled during funding; {str(funded)} wei refunded pro-rata to funders",
       })
-      return f"GRANT_CANCELLED: #{int(gid)} cancelled before funding."
+      if funded == 0:
+        return f"GRANT_CANCELLED: #{int(gid)} cancelled before funding."
+      return f"GRANT_CANCELLED: #{int(gid)} cancelled during funding; {str(funded)} wei refunded pro-rata to funders."
     if data["status"] != "FUNDED":
       raise gl.vm.UserError("BAD_STATUS")
     mid = int(data["current_milestone"])
@@ -886,15 +1004,49 @@ class GrantFlow(gl.contract.Contract):
     data["status"] = "CANCELLED"
     self.locked_wei -= int(refund)
     self._save(gid, data)
-    self._credit(data["grantor"], refund)
+    # v3.5 F4 (§5.3/§5.4): the refund goes to the funders pro-rata;
+    # the per-milestone attribution above is asserted to sum to the
+    # same total, and the log gains the per-funder split.
+    split = self._credit_split(data, int(refund))
     self._log({
       "type": "CANCEL",
       "grant_id": int(gid),
       "refund_wei": str(refund),
       "milestones": breakdown,
-      "message": f"GRANT_CANCELLED: #{int(gid)} recorded {str(refund)} wei claimable by grantor",
+      "split": {a: str(s) for a, s in split.items()},
+      "message": f"GRANT_CANCELLED: #{int(gid)} recorded {str(refund)} wei claimable by funders pro-rata",
     })
-    return f"GRANT_CANCELLED: #{int(gid)} recorded {str(refund)} wei claimable by grantor; withdraw via withdraw_claim."
+    return f"GRANT_CANCELLED: #{int(gid)} recorded {str(refund)} wei claimable by funders pro-rata; withdraw via withdraw_claim."
+
+  @gl.public.write
+  def expire_funding(self, grant_id: bigint) -> str:
+    # v3.5 F4 (§5.5): permissionless close of a PENDING_FUNDING grant
+    # whose funding deadline has passed. Every funder is refunded from
+    # funded_wei via the §5.3 split — the pure-refund case, so each
+    # funder receives exactly their contribution. An abandoned
+    # partially funded grant can never strand co-funders' money
+    # behind an absent creator.
+    gid, data = self._load(grant_id)
+    if data["status"] != "PENDING_FUNDING":
+      raise gl.vm.UserError("BAD_STATUS")
+    if self._now() < int(data["funding_deadline"]):
+      raise gl.vm.UserError("FUNDING_NOT_EXPIRED")
+    funded = int(data.get("funded_wei", "0"))
+    split = {}
+    if funded > 0:
+      split = self._credit_split(data, funded)
+      self.locked_wei -= funded
+      data["refunded_wei"] = str(int(data["refunded_wei"]) + funded)
+    data["status"] = "CANCELLED"
+    self._save(gid, data)
+    self._log({
+      "type": "FUNDING_EXPIRED",
+      "grant_id": int(gid),
+      "refund_wei": str(funded),
+      "split": {a: str(s) for a, s in split.items()},
+      "message": f"FUNDING_EXPIRED: grant #{int(gid)} funding window closed; {str(funded)} wei refunded pro-rata to funders",
+    })
+    return f"FUNDING_EXPIRED: grant #{int(gid)} funding window closed; {str(funded)} wei refunded pro-rata to funders."
 
   @gl.public.write
   def withdraw_claim(self) -> str:
@@ -934,6 +1086,15 @@ class GrantFlow(gl.contract.Contract):
     rec = json.loads(self.pending_claims[recipient])
     if self._now() < int(rec["initiated_at"]) + _PENDING_MIN_AGE:
       raise gl.vm.UserError("TOO_EARLY")
+    # v3.5 (§1.3): balance-sufficiency guard. If the contract's actual
+    # balance no longer covers locked + claimable + pending, the
+    # withdrawal actually left the contract without a
+    # confirm_withdrawal; restoring would re-credit money already paid
+    # out of other grants' escrow. Refuse and leave the pending entry
+    # untouched for owner review. The 600 s age gate above is
+    # unchanged.
+    if int(self.balance) < int(self.locked_wei) + int(self.total_claimable_wei) + int(self.total_pending_wei):
+      raise gl.vm.UserError("RESTORE_BALANCE_SHORTFALL")
     cur = int(self.claims[recipient]) if recipient in self.claims else 0
     self.claims[recipient] = str(cur + amt)
     self.total_claimable_wei += amt
