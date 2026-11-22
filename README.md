@@ -239,6 +239,57 @@ Copy `.env.example` to `.env` for local development: `VITE_WC_PROJECT_ID`
 is optional (enables WalletConnect), and `VITE_CONTRACT_ADDRESS` is an
 optional override for the contract address.
 
+## v3.5 milestone 1 (November 2026)
+
+The first upgrade to the contract since the accepted v3.4 version. It adds
+three things, and leaves the escrow, the milestone deadlines, the builder
+appeal and the partial-payout verdict exactly as they were.
+
+- **Verdicts explain themselves on-chain.** Every milestone verdict now
+  carries a reason code chosen by the jury as part of the same consensus
+  output, from a closed set of five — `DELIVERABLES_COMPLETE`,
+  `DELIVERABLES_PARTIAL`, `DELIVERABLES_MISSING`, `DELIVERABLES_OFF_SPEC`,
+  `EVIDENCE_TOO_THIN`. Each code maps to one fixed sentence in the
+  contract, so the reason stored next to a verdict is identical on every
+  validator and can be read back any time through `get_verdict`.
+- **A builder record that lives on-chain.** The contract keeps a running
+  record per builder — grants, milestones judged, and MET / PARTIAL /
+  NOT_MET counts — written only when a verdict becomes final and only
+  once per milestone. Anyone can read it through
+  `get_builder_record(address)`.
+- **A grant can be funded by more than one person.** Up to 20 funders can
+  co-fund one grant, each contributing at least 5% of the target (the
+  exact remainder excepted; a builder cannot fund their own grant). Every
+  refund, cancel and remainder follows one deterministic pro-rata split
+  based on recorded shares. If funding stalls, the creator can cancel for
+  a pro-rata refund, and anyone can call `expire_funding` once the 7-day
+  funding deadline passes — partial funding never sits stuck.
+
+**v3.5 contract:** `0x95b2DC069a0Cc2dbD122612E054E3EA24f7274Ab`
+**Contract on the explorer:** https://explorer-bradbury.genlayer.com/address/0x95b2DC069a0Cc2dbD122612E054E3EA24f7274Ab
+**Deploy tx:** `0x5ffaa0680d24ba437d75819ba05c8028857765c3c90c299fb8428f825c808768`
+**Deployed source:** `contracts/GrantFlow.py` in this repo — sha256
+`e063dde7bb5ed55447d4e632fe2dc2391401a9b21bda6444e251961378b597a6`
+(37,277 bytes), byte-identical to the deployed contract. The previous
+v3.4 contract remains live at `0x0910f66E76a5403Cee46D44C96cC79E75C6C07eE`.
+
+Verified results for this milestone (full record in `TEST_REPORT.md`):
+
+- Offline suite: 41/41 checks pass against both the readable source and
+  the deployed source; the two were verified structurally identical
+  (same public methods, same storage, same stored texts).
+- Live suite on a fast-clock twin (`0x5B276eE17409C39419C27bBc569d2dDEd220Bab1`,
+  deploy tx `0x35043580ac11111bb5026a5eaead330a3a70a705dcf3910430f9c48c00e00bec`,
+  differing from production in exactly one line — the funding window is
+  120 seconds instead of 7 days): every lifecycle path passed, including
+  multi-funder splits and refunds checked to the wei.
+- Production exhibit: one complete grant ran end to end on the production
+  contract. The jury's assessment (tx
+  `0xf8355c2e29cc3d70f800724cbc9d8add1080175159570771803d73e3cad335e9`)
+  returned MET at 100% with reason code `DELIVERABLES_COMPLETE` stored
+  on-chain; the release credited the builder exactly 0.01 GEN and fund
+  conservation was exact.
+
 ## Links
 
 - Live dApp: https://grantflow-ameer-hamza-s-projects2.vercel.app/

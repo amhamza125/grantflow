@@ -88,3 +88,65 @@ against chain state.
 | Funding rules surfaced in the UI | Wrong-sender and wrong-amount funding were credited back to the wei and shown in the UI as claimable |
 | Public Ledger links | 36 transaction links rendered; all 36 resolve to real transactions on the explorer API |
 | Final state of the test deployment | Balance == locked == 0.016 GEN; claimable 0; pending 0 |
+
+
+---
+
+## v3.5 milestone 1 — verification record (2026-11-22)
+
+### System under test
+
+| Item | Value |
+|---|---|
+| Contract (production) | `0x95b2DC069a0Cc2dbD122612E054E3EA24f7274Ab` |
+| Deploy tx | `0x5ffaa0680d24ba437d75819ba05c8028857765c3c90c299fb8428f825c808768` (MAJORITY_AGREE / FINISHED_WITH_RETURN) |
+| Deployed source | `contracts/GrantFlow.py`, 37,277 B, sha256 `e063dde7bb5ed55447d4e632fe2dc2391401a9b21bda6444e251961378b597a6` |
+| Fast-clock twin | `0x5B276eE17409C39419C27bBc569d2dDEd220Bab1`, deploy tx `0x35043580ac11111bb5026a5eaead330a3a70a705dcf3910430f9c48c00e00bec` |
+| Twin difference | Exactly one line: `_FUNDING_WINDOW` 604800 → 120, so the full lifecycle runs in minutes; all jury, verdict and money paths are the production code unchanged |
+| Network | GenLayer Bradbury Phase 2, chain ID 4221 |
+
+### Offline suite
+
+41/41 checks pass against both the readable source and the deployed
+source. A structural comparison of the two sources passes in full: 26
+public methods, 17 storage fields, 831 string literals and 170 numeric
+constants identical.
+
+### Live suite on the twin — all paths PASS
+
+39 finalized steps, every one MAJORITY_AGREE.
+
+| Path | Result |
+|---|---|
+| A — single-funder MET lifecycle (F1 + F3) | Verdict MET 100% with reason code `DELIVERABLES_COMPLETE` stored on-chain and the stored text byte-equal to the canonical sentence for the code. Release credited the builder exactly 0.01 GEN. The builder record counted the verdict exactly once. Negative probes: assessment by a non-party rejected (`ONLY_PARTY_ASSESS`, state unchanged); double release rejected (`BAD_STATUS`, state unchanged). Withdraw and confirm completed |
+| B — multi-funder split (F4) | Funders contributed 0.015 / 0.009 / 0.006 GEN (50/30/20 of 0.03). Verdict MET 100%, `DELIVERABLES_COMPLETE`. Release paid the builder exactly 0.03 GEN, remainder 0, split exact, conservation exact |
+| C — funding expiry (F4) | 0.012 of 0.02 funded; after the window lapsed, `expire_funding` by a non-party refunded exactly (0.008 and 0.004) and the grant was CANCELLED. Negative probes: builder self-funding rejected with full credit-back; a contribution below the 5% floor rejected with full credit-back |
+| D — appeal regression | Round 1 verdict NOT_MET 0%, reason code `DELIVERABLES_OFF_SPEC`. Resubmission without appeal rejected (`APPEAL_REQUIRED`); a second appeal rejected (`APPEAL_ALREADY_USED`). Appeal round verdict MET 100%, `DELIVERABLES_COMPLETE`, released. Appeal after a final verdict rejected (`BAD_STATUS`). The builder record counted the grant once across both rounds |
+| E — abandoned NOT_MET expires | Verdict NOT_MET 0%, `DELIVERABLES_OFF_SPEC`, not counted before expiry. After the milestone deadline, `expire_milestone` by a non-party refunded the funder exactly 0.01 GEN, the record counted the NOT_MET on expiry, grant COMPLETE, milestone EXPIRED |
+
+### Production exhibit — grant 0 on the production contract
+
+| Step | Tx | Result |
+|---|---|---|
+| Create grant (0.01 GEN milestone) | `0x53638e69478cda2f4c70938dad0584a05aa7c663d348f620a1ed2` | MAJORITY_AGREE / FINISHED_WITH_RETURN |
+| Fund grant (0.01 GEN) | `0xfd8c97a073a4e9bd14733ababa33b40cb7bf58bda638324c58023f7e7b0a3037` | MAJORITY_AGREE / FINISHED_WITH_RETURN |
+| Submit evidence | `0x52471178614ee622f60aeaad03e84646495b46a94d94d0f37bfa43e4b3852aa7` | MAJORITY_AGREE / FINISHED_WITH_RETURN |
+| Assess milestone (jury) | `0xf8355c2e29cc3d70f800724cbc9d8add1080175159570771803d73e3cad335e9` | MAJORITY_AGREE / FINISHED_WITH_RETURN |
+| Release tranche | `0xe87de837c857004381e811b71fe80cd1a41852607616b7897d97cbf9de4ada5c` | MAJORITY_AGREE / FINISHED_WITH_RETURN |
+
+Stored verdict read back with `get_verdict` (grant 0, milestone 0):
+verdict MET, payout 100%, reason code `DELIVERABLES_COMPLETE`, reason
+"The fetched artifacts show every deliverable named in the spec.",
+`evidence_sha256`
+`65f5dc4f1907c21a1607664ee60225a4eedca8c7ef6bc4217a3ce5e55ea88836`.
+The release credited the builder exactly 0.01 GEN; the grant finished
+COMPLETE with the milestone VERIFIED, and `get_builder_record` shows the
+builder's record updated by that verdict (1 grant, 1 assessed, 1 MET,
+100% success).
+
+### Conservation
+
+Twin suite: the multi-funder split was exact to the wei with zero
+remainder; expiry refunds were exact on every path. Production after the
+exhibit: contract balance 0.01 GEN, exactly equal to the total claimable
+(the builder's released tranche); locked 0; pending 0. Exact.
